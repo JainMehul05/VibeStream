@@ -1,0 +1,32 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: VibeStream-backend-pdb
+  namespace: vibestream-production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: VibeStream-backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: VibeStream-ai-ml-pdb
+  namespace: vibestream-production
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: VibeStream-ai-ml
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: VibeStream-frontend-pdb
+  namespace: vibestream-production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: VibeStream-frontend

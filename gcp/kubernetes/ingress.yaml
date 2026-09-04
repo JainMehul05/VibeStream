@@ -1,0 +1,62 @@
+# =============================================================================
+# GKE Ingress — global HTTP(S) load balancer fronting the SPA + API
+# =============================================================================
+# Pairs with managedcertificate.yaml and backend-config.yaml.
+# Requires the `gce` ingress class (the default on GKE).
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: VibeStream-ingress
+  namespace: VibeStream
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "VibeStream-static-ip"
+    networking.gke.io/managed-certificates: "VibeStream-cert"
+    networking.gke.io/v1beta1.FrontendConfig: "VibeStream-frontend-config"
+spec:
+  defaultBackend:
+    service:
+      name: VibeStream-frontend
+      port:
+        number: 80
+  rules:
+    - host: VibeStream.example.com
+      http:
+        paths:
+          - path: /users/
+            pathType: Prefix
+            backend:
+              service:
+                name: VibeStream-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: VibeStream-frontend
+                port:
+                  number: 80
+    - host: api.VibeStream.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: VibeStream-backend
+                port:
+                  number: 8000
+---
+# FrontendConfig — HTTPS redirect + SSL policy
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: VibeStream-frontend-config
+  namespace: VibeStream
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT
+  sslPolicy: VibeStream-modern-tls   # create via `gcloud compute ssl-policies create`

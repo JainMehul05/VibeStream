@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: VibeStream-frontend
+spec:
+  template:
+    spec:
+      containers:
+        - name: frontend
+          image: us-ashburn-1.ocir.io/yourtenancy/VibeStream-frontend:2025.01.01
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: VibeStream-backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          image: us-ashburn-1.ocir.io/yourtenancy/VibeStream-backend:2025.01.01
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: VibeStream-ai-ml
+spec:
+  template:
+    spec:
+      containers:
+        - name: ai-ml
+          image: us-ashburn-1.ocir.io/yourtenancy/VibeStream-ai-ml:2025.01.01

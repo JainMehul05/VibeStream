@@ -1,0 +1,50 @@
+{
+  "name": "vibestream-app",
+  "displayName": "VibeStream App",
+  "author": "Son Nguyen",
+  "license": "MIT",
+  "description": "VibeStream Adaptive Music Recommendation Platform",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JainMehul05/VibeStream.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JainMehul05/VibeStream/issues"
+  },
+  "version": "1.1.0",
+  "private": false,
+  "scripts": {
+    "start": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "test": "cd frontend && npm test -- --watchAll=false --passWithNoTests",
+    "eject": "cd frontend && npm run eject",
+    "frontend": "cd frontend && npm start",
+    "backend": "cd backend && python manage.py runserver",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "format": "prettier --write \"frontend/**/*.{js,jsx,json,css,scss,md,html}\""
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "dependencies": {
+    "prettier": "^3.3.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

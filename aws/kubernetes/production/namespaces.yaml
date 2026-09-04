@@ -1,0 +1,32 @@
+# Kubernetes Namespaces for VibeStream Application
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: VibeStream-production
+  labels:
+    name: VibeStream-production
+    environment: production
+    app.kubernetes.io/name: VibeStream
+    app.kubernetes.io/managed-by: kubectl
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: VibeStream-monitoring
+  labels:
+    name: VibeStream-monitoring
+    environment: production
+    purpose: monitoring
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: VibeStream-ingress
+  labels:
+    name: VibeStream-ingress
+    environment: production
+    purpose: ingress-controller

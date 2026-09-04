@@ -1,0 +1,99 @@
+@'
+# VibeStream
+
+> Adaptive music recommendation platform that uses mood as one contextual
+> signal and continuously personalizes recommendations from user feedback.
+
+VibeStream is a substantially modified and extended version of the
+open-source VibeStream project by
+[Son Nguyen](https://github.com/hoangsonww). The original project provided
+the core emotion detection and music recommendation pipeline. VibeStream
+extends it with API versioning, backend restructuring, personalization,
+mood calibration, WebAuthn passkeys, testing, and production-oriented
+infrastructure.
+
+## What VibeStream does
+
+- Detects emotion from text, voice, or a front-facing image.
+- Uses mood as contextual information for music recommendations.
+- Supports genre and market-aware recommendation requests.
+- Personalizes recommendations using user interaction signals.
+- Records feedback and listening activity for future personalization.
+- Provides web and mobile clients.
+
+## Technical stack
+
+- **Frontend (web):** React 18, MUI, React Router, Axios.
+- **Frontend (mobile):** React Native / Expo.
+- **Backend API:** Django + Django REST Framework, MongoDB Atlas,
+  JWT authentication, WebAuthn/passkeys.
+- **Inference:** FastAPI deployed through Modal with emotion models and
+  recommendation services.
+- **Infrastructure:** Docker, Kubernetes/Helm, Terraform, Argo CD,
+  CI/CD and observability configuration.
+
+## API
+
+VibeStream API endpoints are versioned under `/api/v1/`.
+
+Examples include:
+
+- User registration and authentication
+- Token refresh
+- User profile and history
+- Mood history
+- Recommendation persistence
+- Listening history
+- Feedback
+- Text emotion inference
+- Speech emotion inference
+- Facial emotion inference
+- Music recommendation
+
+See `README.md` and `openapi.yaml` for the authoritative API
+documentation.
+
+## Documentation
+
+- `README.md` - project overview, architecture, setup, testing and deployment
+- `ARCHITECTURE.md` - system architecture
+- `DEPLOYMENT.md` - deployment guidance
+- `INFRASTRUCTURE_SETUP.md` - infrastructure walkthrough
+- `MOBILE_APPS.md` - mobile architecture and setup
+- `frontend/README.md` - web client documentation
+- `mobile/README.md` - mobile client documentation
+
+## Authoritative sources
+
+- Source code: https://github.com/JainMehul05/VibeStream
+- VibeStream web deployment: placeholder; no live VibeStream deployment is
+  currently claimed
+- Backend API: placeholder
+- Inference service: placeholder
+
+## Attribution
+
+VibeStream is derived from and substantially extends the open-source
+VibeStream project:
+
+- Original repository:
+  https://github.com/hoangsonww/VibeStream-Emotion-Music-App
+- Original author: Son Nguyen (@hoangsonww)
+
+The original project's license and attribution requirements remain applicable
+to the portions derived from that project.
+
+## Licensing
+
+See the repository `LICENSE` file for the project's applicable license.
+Track metadata is obtained from Deezer's public API. Trademarks belong to
+their respective owners.
+
+## Crawling guidance
+
+The public informational pages may be crawled, indexed, summarized and
+referenced. Authenticated application pages may contain user-specific
+information and should not be treated as generally indexable content.
+'@ | Set-Content frontend/public/llms.txt
+
+git add frontend/public/llms.txt

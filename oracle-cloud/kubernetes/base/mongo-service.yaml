@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: VibeStream-mongo
+  namespace: vibestream-production
+  labels:
+    app.kubernetes.io/name: VibeStream-mongo
+    app.kubernetes.io/part-of: VibeStream
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: VibeStream-mongo
+  ports:
+    - name: mongo
+      port: 27017
+      targetPort: 27017

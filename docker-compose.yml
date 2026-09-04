@@ -1,0 +1,50 @@
+# Local development stack for VibeStream.
+#
+# ML inference is NOT in this stack -- it runs on Modal. For local
+# inference run `modal serve modal_app.py` from modal_inference/ and point
+# MODAL_INFERENCE_URL at the URL it prints.
+services:
+  mongodb:
+    image: mongo:7
+    container_name: vibestream_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: vibestream_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - MONGO_DB_URI=mongodb://mongodb:27017/emotion_based_music_db
+      - SECRET_KEY=${SECRET_KEY:-local-dev-secret-key}
+      - JWT_SIGNING_KEY=${JWT_SIGNING_KEY:-local-dev-jwt-key}
+      # Point these at a `modal serve` URL for local inference.
+      - MODAL_INFERENCE_URL=${MODAL_INFERENCE_URL:-}
+      - MODAL_SERVICE_TOKEN=${MODAL_SERVICE_TOKEN:-local-dev-service-token}
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: vibestream_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_MODAL_API_URL=${MODAL_INFERENCE_URL:-}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mongo_data:

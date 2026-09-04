@@ -1,0 +1,123 @@
+"""Tests for the refactored emotion/recommendation API views.
+
+These views proxy to the Modal inference service; the proxy calls are
+mocked by the autouse ``mock_inference`` fixture in conftest.py.
+"""
+
+import pytest
+from rest_framework import status
+from rest_framework.test import APIRequestFactory
+
+from api import views
+from integrations.clients import InferenceServiceError
+
+factory = APIRequestFactory()
+
+
+class TestHealth:
+    def test_health_ok(self):
+        resp = views.health(factory.get("/api/v1/health/"))
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["status"] == "ok"
+
+    def test_health_routed(self, api_client):
+        resp = api_client.get("/api/v1/health/")
+        assert resp.status_code == status.HTTP_200_OK
+
+
+class TestTextEmotion:
+    def test_400_if_no_text(self):
+        resp = views.text_emotion(factory.post("/api/v1/text_emotion/", data={}))
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert "error" in resp.data
+
+    def test_200_and_payload(self):
+        resp = views.text_emotion(
+            factory.post("/api/v1/text_emotion/", {"text": "I feel great"}, format="json")
+        )
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["emotion"] == "neutral"
+        assert isinstance(resp.data["recommendations"], list)
+
+    @pytest.mark.parametrize("txt", ["hello", "こんにちは", "12345", "MiXeD!!!"])
+    def test_various_inputs(self, txt):
+        resp = views.text_emotion(factory.post("/api/v1/text_emotion/", {"text": txt}, format="json"))
+        assert resp.status_code == status.HTTP_200_OK
+
+    def test_502_when_inference_unavailable(self, monkeypatch):
+        def boom(_text):
+            raise InferenceServiceError("modal down")
+
+        monkeypatch.setattr(views, "modal_text", boom)
+        resp = views.text_emotion(factory.post("/api/v1/text_emotion/", {"text": "hi"}, format="json"))
+        assert resp.status_code == status.HTTP_502_BAD_GATEWAY
+
+
+class TestMusicRecommendation:
+    def test_400_if_no_emotion(self):
+        resp = views.music_recommendation(factory.post("/api/v1/music_recommendation/", data={}))
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert "error" in resp.data
+
+    def test_200_and_payload(self):
+        resp = views.music_recommendation(
+            factory.post("/api/v1/music_recommendation/", {"emotion": "joy"}, format="json")
+        )
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["emotion"] == "joy"
+        assert isinstance(resp.data["recommendations"], list)
+
+    @pytest.mark.parametrize("emo", ["happy", "sad", "CONFUSED", "🙂"])
+    def test_various_emotions(self, emo):
+        resp = views.music_recommendation(
+            factory.post("/api/v1/music_recommendation/", {"emotion": emo}, format="json")
+        )
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["emotion"] == emo
+
+    def test_history_is_capped_and_stringified(self, monkeypatch):
+        captured = {}
+
+        def capture(emotion, market=None, history=None, genre=None):
+            captured["history"] = history
+            return {"emotion": emotion, "recommendations": []}
+
+        monkeypatch.setattr(views, "modal_music", capture)
+        resp = views.music_recommendation(
+            factory.post(
+                "/api/v1/music_recommendation/",
+                {"emotion": "joy", "history": ["sad"] * 60 + [123]},
+                format="json",
+            )
+        )
+        assert resp.status_code == status.HTTP_200_OK
+        assert len(captured["history"]) == 50
+        assert all(isinstance(mood, str) for mood in captured["history"])
+
+    def test_malformed_history_is_ignored(self, monkeypatch):
+        captured = {}
+
+        def capture(emotion, market=None, history=None, genre=None):
+            captured["history"] = history
+            return {"emotion": emotion, "recommendations": []}
+
+        monkeypatch.setattr(views, "modal_music", capture)
+        resp = views.music_recommendation(
+            factory.post(
+                "/api/v1/music_recommendation/",
+                {"emotion": "joy", "history": "not-a-list"},
+                format="json",
+            )
+        )
+        assert resp.status_code == status.HTTP_200_OK
+        assert captured["history"] == []
+
+    def test_502_when_inference_unavailable(self, monkeypatch):
+        def boom(_emotion, _market=None, _history=None, _genre=None):
+            raise InferenceServiceError("modal down")
+
+        monkeypatch.setattr(views, "modal_music", boom)
+        resp = views.music_recommendation(
+            factory.post("/api/v1/music_recommendation/", {"emotion": "joy"}, format="json")
+        )
+        assert resp.status_code == status.HTTP_502_BAD_GATEWAY

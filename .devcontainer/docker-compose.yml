@@ -1,0 +1,73 @@
+# Dev container stack for VibeStream.
+#
+# ML inference runs on Modal, not in this stack -- run `modal serve` from
+# modal_inference/ for local inference.
+services:
+  devcontainer:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    container_name: devcontainer
+    volumes:
+      - ..:/workspace:cached
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
+    networks:
+      - dev_network
+    depends_on:
+      - backend
+      - frontend
+      - mongodb
+    command: sleep infinity
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: backend_service
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - MONGO_DB_URI=mongodb://mongodb:27017/emotion_based_music_db
+      - SECRET_KEY=${SECRET_KEY:-local-dev-secret-key}
+      - JWT_SIGNING_KEY=${JWT_SIGNING_KEY:-local-dev-jwt-key}
+      - MODAL_INFERENCE_URL=${MODAL_INFERENCE_URL:-}
+      - MODAL_SERVICE_TOKEN=${MODAL_SERVICE_TOKEN:-local-dev-service-token}
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+    networks:
+      - dev_network
+
+  frontend:
+    build:
+      context: ../frontend
+    container_name: frontend_service
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_MODAL_API_URL=${MODAL_INFERENCE_URL:-}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - dev_network
+
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - dev_network
+
+networks:
+  dev_network:
+
+volumes:
+  mongo_data:

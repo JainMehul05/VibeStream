@@ -1,0 +1,43 @@
+apiVersion: v2
+name: vibestream-monitoring
+description: |
+  Umbrella chart that installs the full VibeStream observability stack:
+  kube-prometheus-stack (Prometheus + Grafana + AlertManager), Loki for logs,
+  Tempo for traces, and Promtail for shipping. Pre-wired with VibeStream
+  dashboards + alert rules so a single `helm install` brings the whole
+  stack up.
+type: application
+version: 1.0.0
+appVersion: "2026.03"
+keywords:
+  - VibeStream
+  - monitoring
+  - prometheus
+  - grafana
+  - loki
+  - tempo
+  - observability
+maintainers:
+  - name: Son Nguyen
+    email: hoangson091104@gmail.com
+home: https://github.com/YOUR_GITHUB_USERNAME/VibeStream.git
+sources:
+  - https://github.com/YOUR_GITHUB_USERNAME/VibeStream.git
+icon: https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/VibeStream/main/frontend/web/public/logo512.png
+dependencies:
+  - name: kube-prometheus-stack
+    version: "65.5.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: kube-prometheus-stack.enabled
+  - name: loki
+    version: "6.20.0"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: loki.enabled
+  - name: promtail
+    version: "6.16.6"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: promtail.enabled
+  - name: tempo
+    version: "1.14.0"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: tempo.enabled

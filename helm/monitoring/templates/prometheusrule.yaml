@@ -1,0 +1,61 @@
+{{- if .Values.VibeStream.alerts.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "vibestream-monitoring.fullname" . }}-slo
+  namespace: {{ .Values.VibeStream.alerts.namespace }}
+  labels:
+    {{- include "vibestream-monitoring.labels" . | nindent 4 }}
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: VibeStream.slo
+      interval: 30s
+      rules:
+        - alert: VibeStreamBackendHigh5xx
+          expr: |
+            (
+              sum(rate(django_http_responses_total_by_status_total{job="vibestream-backend",status=~"5.."}[5m]))
+              /
+              sum(rate(django_http_responses_total_by_status_total{job="vibestream-backend"}[5m]))
+            ) > 0.02
+          for: 5m
+          labels:
+            severity: warning
+            service: vibestream-backend
+          annotations:
+            summary: "Backend 5xx ratio > 2% (5m)"
+            runbook: "https://github.com/YOUR_GITHUB_USERNAME/VibeStream.git/blob/master/INFRASTRUCTURE_SETUP.md"
+
+        - alert: VibeStreamBackendHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(django_http_requests_latency_seconds_bucket{job="vibestream-backend"}[5m]))
+            ) > 1.5
+          for: 10m
+          labels:
+            severity: warning
+            service: vibestream-backend
+          annotations:
+            summary: "Backend p95 latency > 1.5s (10m)"
+
+        - alert: VibeStreamInferenceColdStarts
+          expr: increase(modal_function_cold_start_total[15m]) > 50
+          for: 15m
+          labels:
+            severity: info
+            service: modal-inference
+          annotations:
+            summary: "More than 50 Modal cold starts in 15m"
+            description: "Consider raising min_containers on the Modal app."
+
+        - alert: VibeStreamPodCrashLoop
+          expr: rate(kube_pod_container_status_restarts_total{namespace="VibeStream"}[10m]) > 0
+          for: 10m
+          labels:
+            severity: critical
+            service: VibeStream
+          annotations:
+            summary: "Pods restarting in VibeStream namespace"
+{{- end }}

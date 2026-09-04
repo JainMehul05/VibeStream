@@ -1,0 +1,22 @@
+apiVersion: v2
+name: vibestream-backend
+description: Helm chart for VibeStream backend application with blue-green deployment support
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - VibeStream
+  - backend
+  - nodejs
+  - blue-green
+
+maintainers:
+  - name: Son Nguyen
+    email: devops@VibeStream.com
+
+dependencies: []
+
+annotations:
+  category: Application
+  licenses: Apache-2.0

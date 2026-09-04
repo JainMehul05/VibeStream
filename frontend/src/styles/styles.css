@@ -1,0 +1,290 @@
+body {
+  font-family: "Poppins", sans-serif;
+  margin: 0;
+  padding: 0;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+/* Light mode styles */
+body.light-mode {
+  background-color: white;
+  color: black;
+}
+
+h2,
+h4,
+h6 {
+  color: black;
+}
+
+/* Dark mode styles */
+body.dark-mode {
+  background-color: #121212;
+  color: white;
+}
+
+body.dark-mode h2,
+body.dark-mode h4,
+body.dark-mode h6 {
+  color: white;
+}
+
+button {
+  background-color: #ff4d4d;
+  color: white;
+  transition: 0.3s ease;
+}
+
+button:hover {
+  background-color: #ff1a1a;
+  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Dark mode button style */
+body.dark-mode button {
+  background-color: #222;
+  color: white;
+}
+
+body.dark-mode button:hover {
+  background-color: #ff4d4d;
+  box-shadow: 0px 4px 12px rgba(255, 255, 255, 0.2);
+}
+
+body.dark-mode button:active {
+  background-color: #ff6666 !important;
+}
+
+/* These element-level input rules are for plain/native inputs only.
+   `:not([class*="Mui"])` keeps them off MUI's inner <input>/<textarea>,
+   which manage their own colours via the theme. Without the exclusion the
+   `body.dark-mode input { background-color:#333 }` rule painted the inner
+   field of every MUI input a different shade than its outlined container
+   (visible app-wide once the dark-mode body class is applied). */
+input:not([class*="Mui"]),
+textarea:not([class*="Mui"]) {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.3s ease;
+}
+
+input:not([class*="Mui"]):focus,
+textarea:not([class*="Mui"]):focus {
+  border-color: #ff4d4d;
+}
+
+body.dark-mode input:not([class*="Mui"]),
+body.dark-mode textarea:not([class*="Mui"]) {
+  background-color: #333;
+  color: white;
+  border-color: #666;
+}
+
+body.dark-mode input:not([class*="Mui"]):focus,
+body.dark-mode textarea:not([class*="Mui"]):focus {
+  border-color: #ff6666;
+}
+
+/* Hover effects */
+.hero-button:hover {
+  transform: scale(1.05);
+  transition: transform 0.3s ease-in-out;
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+  transition: transform 0.3s ease;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes floatSoft {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(14px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes vibestreamMarquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.pulse-animation {
+  animation: pulse 1.5s infinite;
+}
+
+.fade-in {
+  animation: fadeIn 1s ease-in-out;
+}
+
+/* Theme link colors for plain content anchors only.
+   `:not([class*="Mui"])` excludes MUI-styled anchors (Link, Button,
+   IconButton render <a>). Those carry their own colour via an emotion
+   class, but `body.<mode> a` (specificity 0,1,2) outranks that emotion
+   class (0,1,0) -- so without the exclusion these rules repaint every MUI
+   link the brand red, making e.g. the footer links unreadable on the red
+   gradient. */
+body.dark-mode a:not([class*="Mui"]) {
+  color: #ff6666;
+}
+
+body.light-mode a:not([class*="Mui"]) {
+  color: #ff4d4d;
+}
+
+/* Scroll reveal animations */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+  will-change: opacity, transform;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-delay-1 {
+  transition-delay: 0.08s;
+}
+
+.reveal-delay-2 {
+  transition-delay: 0.16s;
+}
+
+.reveal-delay-3 {
+  transition-delay: 0.24s;
+}
+
+.reveal-delay-4 {
+  transition-delay: 0.32s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+/* Sticky-footer scaffold: the shell is a full-viewport flex column, the
+   main area grows to absorb all spare height, so the footer is always
+   pinned to the bottom -- including while a route is still loading and the
+   page has rendered no height yet (previously the footer rode up under the
+   navbar mid-load). */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.app-main {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main .page-anim {
+  flex: 1 0 auto;
+}
+
+/* Route page transitions: each page slides up into view on arrival and slides
+   down out of view on departure (SwitchTransition mode="out-in"). */
+/* NOTE: `will-change` is applied ONLY during the active transition phases, not
+   on the resting `.page-anim`. A persistent `will-change: transform` creates a
+   stacking context even when no transform is set, which traps position:fixed
+   descendants (e.g. the loading overlay) below MUI modals that portal to
+   <body>. Keeping it scoped to the animating frames lets fixed descendants
+   compete at the document level once the page is at rest. */
+
+.page-enter,
+.page-appear {
+  opacity: 0;
+  transform: translateY(30px);
+  will-change: transform, opacity;
+}
+
+.page-enter-active,
+.page-appear-active {
+  opacity: 1;
+  transform: translateY(0);
+  will-change: transform, opacity;
+  transition:
+    opacity 0.48s ease,
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* No transform at rest so position:fixed descendants behave normally. */
+.page-enter-done,
+.page-appear-done {
+  transform: none;
+}
+
+.page-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.page-exit-active {
+  opacity: 0;
+  transform: translateY(30px);
+  will-change: transform, opacity;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-anim,
+  .page-enter,
+  .page-enter-active,
+  .page-appear,
+  .page-appear-active,
+  .page-exit,
+  .page-exit-active {
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}

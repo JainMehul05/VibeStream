@@ -1,0 +1,64 @@
+// Best-effort logging of user track interactions. Both the preview-play
+// button and the "Open in Deezer" button on every TrackCard call into
+// this so the backend's listening_history grows with real signal -- not
+// just whatever the Modal recommender ships back.
+
+import axios from "axios";
+
+import { API_V1_URL } from "../config";
+import { getToken } from "./auth";
+
+const seen = new Set();
+
+function key(profileId, track) {
+  const name = track?.name || "";
+  const artist = track?.artist || "";
+  return `${profileId}::${name}::${artist}`;
+}
+
+// Persist the full track shape (not just "Name - Artist") so the profile's
+// "Tracks you've opened" list can render the same rich card -- cover art,
+// preview player, Deezer link -- as saved recommendations. Older rows that
+// are plain strings are still handled on read.
+function entryFor(track) {
+  if (!track || !track.name) return null;
+  return {
+    name: track.name,
+    artist: track.artist || "",
+    image_url: track.image_url || "",
+    preview_url: track.preview_url || "",
+    external_url: track.external_url || track.url || "",
+    popularity: track.popularity || 0,
+  };
+}
+
+/**
+ * POST a single track open to /users/listening_history/:pid.
+ *
+ * Silent failure on purpose -- this is analytics, not a critical write,
+ * and we never want a 401/500 to surface to the user mid-playback. The
+ * in-memory `seen` set dedupes within a single page load so spamming the
+ * play button doesn't fan out to N writes.
+ */
+export async function logTrackOpen(profileId, track) {
+  if (!profileId) return;
+  const token = getToken();
+  if (!token) return;
+  const entry = entryFor(track);
+  if (!entry) return;
+
+  const k = key(profileId, track);
+  if (seen.has(k)) return;
+  seen.add(k);
+
+  try {
+    await axios.post(
+      `${API_V1_URL}/users/listening_history/${profileId}/`,
+      { track: entry },
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    // Allow a retry next render if it failed.
+    seen.delete(k);
+  }
+}

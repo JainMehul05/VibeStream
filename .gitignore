@@ -1,0 +1,54 @@
+# Ignore the node_modules directories
+/frontend/node_modules/
+/node_modules
+
+# Ignoring large AI/ML model files
+/ai_ml/models/text_emotion_model/checkpoint-965/
+/ai_ml/models/text_emotion_model/checkpoint-1930/
+/ai_ml/models/text_emotion_model/checkpoint-2895/
+/ai_ml/models/text_emotion_model/checkpoint-3860/
+/ai_ml/models/text_emotion_model/model.safetensors
+
+# Ignoring the .env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+/mobile/node_modules/
+
+# Python build / test artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+coverage.xml
+/backend/staticfiles/
+
+# Helm dep cache — downloaded by `helm dependency update`. Chart.lock pins versions.
+helm/*/charts/*.tgz
+helm/*/charts/
+
+# Local database / IDE files
+identifier.sqlite
+.idea/
+.vscode/
+
+
+# Python virtual environments
+.venv/
+venv/
+
+
+# ML training dataset - kept locally, not committed
+/ai_ml/data/*.wav
+
+ai_ml/data/test.txt
+
+# Local ML training dataset
+/ai_ml/data/Actor_*/
+
+.idea/
+.vscode/

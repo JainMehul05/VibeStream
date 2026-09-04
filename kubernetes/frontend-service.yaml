@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: VibeStream-frontend
+  labels:
+    app.kubernetes.io/name: VibeStream-frontend
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: VibeStream
+spec:
+  # ClusterIP — expose via Ingress / IngressRoute rather than LoadBalancer
+  # directly. Switch to LoadBalancer only for single-VM clusters that
+  # don't have an ingress controller installed.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: VibeStream-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,25 @@
+apiVersion: v2
+name: vibestream-frontend
+description: |
+  Helm chart for the VibeStream React SPA when self-hosting on Kubernetes. Use
+  alongside helm/vibestream-backend. The canonical production deploy lives on
+  Vercel — this chart is for clusters where you'd rather own the edge.
+type: application
+version: 1.0.0
+appVersion: "2026.03"
+keywords:
+  - VibeStream
+  - frontend
+  - react
+  - spa
+  - nginx
+maintainers:
+  - name: Son Nguyen
+    email: hoangson091104@gmail.com
+home: https://github.com/YOUR_GITHUB_USERNAME/VibeStream.git
+sources:
+  - https://github.com/YOUR_GITHUB_USERNAME/VibeStream.git
+icon: https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/VibeStream/main/frontend/web/public/logo512.png
+annotations:
+  category: Application
+  licenses: Apache-2.0

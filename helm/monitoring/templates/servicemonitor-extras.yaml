@@ -1,0 +1,52 @@
+{{- /*
+Extra ServiceMonitors that don't ship with kube-prometheus-stack but VibeStream
+needs: the nginx edge exporter + the Django backend's /metrics endpoint.
+Disable individually by setting `VibeStream.serviceMonitors.<name>: false`.
+*/}}
+{{- $sm := default dict (default dict .Values.VibeStream).serviceMonitors -}}
+{{- if not (hasKey $sm "nginx") -}}{{- $_ := set $sm "nginx" true -}}{{- end -}}
+{{- if not (hasKey $sm "backend") -}}{{- $_ := set $sm "backend" true -}}{{- end -}}
+
+{{- if get $sm "nginx" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "vibestream-monitoring.fullname" . }}-nginx
+  namespace: {{ .Values.VibeStream.alerts.namespace }}
+  labels:
+    {{- include "vibestream-monitoring.labels" . | nindent 4 }}
+    release: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx-exporter
+  namespaceSelector:
+    matchNames: [VibeStream]
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+{{- end }}
+
+{{- if get $sm "backend" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "vibestream-monitoring.fullname" . }}-backend
+  namespace: {{ .Values.VibeStream.alerts.namespace }}
+  labels:
+    {{- include "vibestream-monitoring.labels" . | nindent 4 }}
+    release: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vibestream-backend
+  namespaceSelector:
+    matchNames: [VibeStream]
+  endpoints:
+    - port: http
+      interval: 30s
+      path: /metrics
+{{- end }}
