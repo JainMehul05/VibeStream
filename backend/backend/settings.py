@@ -89,6 +89,12 @@ MONGO_DB_NAME = config("MONGO_DB_NAME", default="emotion_based_music_db")
 METRICS_COLLECTION = config("METRICS_COLLECTION", default="backend_metrics")
 METRICS_TTL_DAYS = config("METRICS_TTL_DAYS", default=30, cast=int)
 
+# Feedback processing mode
+# When true, feedback is processed synchronously in the request path (for testing)
+FEEDBACK_SYNC_MODE = config("FEEDBACK_SYNC_MODE", default=False, cast=bool)
+# When false, feedback persistence is disabled (for testing)
+FEEDBACK_ENABLED = config("FEEDBACK_ENABLED", default=True, cast=bool)
+
 # Service token that unlocks GET /api/metrics/ -- separate from the
 # user-facing JWT so traffic patterns are operator-only. Falls back to
 # MODAL_SERVICE_TOKEN so the same secret unlocks both /metrics surfaces.
