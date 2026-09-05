@@ -78,11 +78,11 @@ class TestMusicRecommendation:
     def test_history_is_capped_and_stringified(self, monkeypatch):
         captured = {}
 
-        def capture(emotion, market=None, history=None, genre=None):
+        def capture(emotion, user_profile=None, history=None, genre=None):
             captured["history"] = history
-            return {"emotion": emotion, "recommendations": []}
+            return {"emotion": emotion, "recommendations": [], "degraded": False}
 
-        monkeypatch.setattr(views, "modal_music", capture)
+        monkeypatch.setattr("api.views.run_pipeline", capture)
         resp = views.music_recommendation(
             factory.post(
                 "/api/v1/music_recommendation/",
@@ -97,11 +97,11 @@ class TestMusicRecommendation:
     def test_malformed_history_is_ignored(self, monkeypatch):
         captured = {}
 
-        def capture(emotion, market=None, history=None, genre=None):
+        def capture(emotion, user_profile=None, history=None, genre=None):
             captured["history"] = history
-            return {"emotion": emotion, "recommendations": []}
+            return {"emotion": emotion, "recommendations": [], "degraded": False}
 
-        monkeypatch.setattr(views, "modal_music", capture)
+        monkeypatch.setattr("api.views.run_pipeline", capture)
         resp = views.music_recommendation(
             factory.post(
                 "/api/v1/music_recommendation/",
@@ -113,10 +113,10 @@ class TestMusicRecommendation:
         assert captured["history"] == []
 
     def test_502_when_inference_unavailable(self, monkeypatch):
-        def boom(_emotion, _market=None, _history=None, _genre=None):
+        def boom(*_args, **_kwargs):
             raise InferenceServiceError("modal down")
 
-        monkeypatch.setattr(views, "modal_music", boom)
+        monkeypatch.setattr("api.views.run_pipeline", boom)
         resp = views.music_recommendation(
             factory.post("/api/v1/music_recommendation/", {"emotion": "joy"}, format="json")
         )

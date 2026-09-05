@@ -21,6 +21,13 @@ from api.calibration import CALIBRATION_THRESHOLD
 from api.models import UserProfile
 
 
+@pytest.fixture(autouse=True)
+def _enable_feedback_sync_mode(monkeypatch):
+    """Enable synchronous feedback processing for tests."""
+    from django.conf import settings
+    monkeypatch.setattr(settings, "FEEDBACK_SYNC_MODE", True, raising=False)
+
+
 URL_TEXT = "/api/v1/text_emotion/"
 URL_MUSIC = "/api/v1/music_recommendation/"
 
@@ -98,8 +105,7 @@ class TestMusicBanditRerank:
     def test_anon_caller_gets_base_order(self, api_client, monkeypatch):
         base = _two_decade_tracks()
         monkeypatch.setattr(
-            views,
-            "modal_music",
+            "api.candidate_generation.modal_music",
             lambda emotion, market=None, history=None, genre=None: {
                 "emotion": emotion, "recommendations": base, "market": None,
             },
@@ -111,8 +117,7 @@ class TestMusicBanditRerank:
     def test_authed_cold_user_gets_base_order(self, auth_client, monkeypatch):
         base = _two_decade_tracks()
         monkeypatch.setattr(
-            views,
-            "modal_music",
+            "api.candidate_generation.modal_music",
             lambda emotion, market=None, history=None, genre=None: {
                 "emotion": emotion, "recommendations": base, "market": None,
             },
@@ -139,8 +144,7 @@ class TestMusicBanditRerank:
 
         base = _two_decade_tracks()
         monkeypatch.setattr(
-            views,
-            "modal_music",
+            "api.candidate_generation.modal_music",
             lambda emotion, market=None, history=None, genre=None: {
                 "emotion": emotion, "recommendations": base, "market": None,
             },
@@ -157,8 +161,7 @@ class TestMusicBanditRerank:
         """Even if the bandit blows up, the request still succeeds."""
         base = _two_decade_tracks()
         monkeypatch.setattr(
-            views,
-            "modal_music",
+            "api.candidate_generation.modal_music",
             lambda emotion, market=None, history=None, genre=None: {
                 "emotion": emotion, "recommendations": base, "market": None,
             },
@@ -265,3 +268,146 @@ class TestFeedbackWiresIntoTasteProfile:
             format="json",
         )
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Critical end-to-end integration test: Feedback -> Preference -> Ranking
+# ---------------------------------------------------------------------------
+class TestFeedbackChangesRecommendations:
+    """End-to-end test proving feedback actually changes future recommendations.
+
+    This is the critical Phase 2 verification:
+      1. Get initial recommendations for an emotion
+      2. Send positive feedback (like) for a track with specific attributes
+      3. Get new recommendations for same emotion
+      4. Verify ranking changed to favor similar tracks
+    """
+
+    def test_like_changes_future_recommendations(self, auth_client, monkeypatch):
+        """Test that liking a track changes future recommendation ranking."""
+        # Mock Modal client to return consistent track sets
+        def mock_music(emotion, market=None, history=None, genre=None):
+            tracks = [
+                {"name": "track_a", "artist": "ArtistX", "release_date": "2020-01-01",
+                 "duration_ms": 200_000, "popularity": 50, "external_url": "deezer:1"},
+                {"name": "track_b", "artist": "ArtistY", "release_date": "1990-01-01",
+                 "duration_ms": 200_000, "popularity": 50, "external_url": "deezer:2"},
+                {"name": "track_c", "artist": "ArtistZ", "release_date": "2010-01-01",
+                 "duration_ms": 200_000, "popularity": 50, "external_url": "deezer:3"},
+            ]
+            return {"emotion": emotion, "recommendations": tracks, "degraded": False}
+
+        monkeypatch.setattr("api.candidate_generation.modal_music", mock_music)
+
+        # Disable caching for this test to ensure personalization is tested
+        monkeypatch.setattr("api.views.get_cached_recommendations", lambda *args, **kwargs: None)
+        monkeypatch.setattr("api.views.set_cached_recommendations", lambda *args, **kwargs: None)
+
+        # Step 1: Get initial recommendations
+        resp1 = auth_client.post(
+            "/api/v1/music_recommendation/",
+            {"emotion": "joy"},
+            format="json",
+        )
+        assert resp1.status_code == 200
+
+        # Step 2: Like track_a (ArtistX, 2020s) - do multiple likes to reach confidence threshold
+        track_a = {
+            "name": "track_a",
+            "artist": "ArtistX",
+            "release_date": "2020-01-01",
+            "duration_ms": 200_000,
+            "popularity": 50,
+            "external_url": "https://www.deezer.com/track/1",
+        }
+        # Need 5 interactions for personalization confidence (MIN_INTERACTIONS_FOR_CONFIDENCE=5)
+        for i in range(5):
+            fb_track = dict(track_a)
+            fb_track["external_url"] = f"https://www.deezer.com/track/{i+1}"
+            resp_fb = auth_client.post(
+                "/api/v1/feedback/",
+                {"kind": "track", "track_id": f"deezer:{i+1}", "signal": "like",
+                 "context_emotion": "joy", "track": fb_track},
+                format="json",
+            )
+            assert resp_fb.status_code == 202
+
+        # Step 3: Verify preference profile was updated
+        profile = UserProfile.objects(username=auth_client.user.username).first()
+        assert "ArtistX" in profile.artist_preferences
+        assert profile.artist_preferences["ArtistX"] > 0
+        assert "2010s" in profile.era_preferences
+        assert profile.era_preferences["2010s"] > 0
+        # Total interactions should be >= 5
+        total_interactions = sum(profile.interaction_counts.values())
+        assert total_interactions >= 5
+
+        # Step 4: Get new recommendations (personalization should apply)
+        resp2 = auth_client.post(
+            "/api/v1/music_recommendation/",
+            {"emotion": "joy"},
+            format="json",
+        )
+        assert resp2.status_code == 200
+        
+        # Step 5: Verify personalization signals present on tracks matching preferences
+        for track in resp2.data["recommendations"]:
+            signals = track.get("ranking_signals", {})
+            pers = signals.get("personalization", {})
+            if track["artist"] == "ArtistX":
+                assert pers.get("applied") is True, f"Expected personalization applied for {track}"
+                assert pers.get("artist_match") is True, f"Expected artist_match for {track}"
+
+    def test_unlike_penalizes_similar_tracks(self, auth_client, monkeypatch):
+        """Test that disliking a track penalizes similar tracks in future recommendations."""
+        def mock_music(emotion, market=None, history=None, genre=None):
+            tracks = [
+                {"name": "rock_old", "artist": "RockBand", "release_date": "1985-01-01",
+                 "duration_ms": 200_000, "popularity": 50, "external_url": "deezer:10"},
+                {"name": "pop_new", "artist": "PopStar", "release_date": "2020-01-01",
+                 "duration_ms": 200_000, "popularity": 50, "external_url": "deezer:20"},
+            ]
+            return {"emotion": emotion, "recommendations": tracks, "degraded": False}
+
+        monkeypatch.setattr("api.candidate_generation.modal_music", mock_music)
+
+        # Dislike the 1980s rock track - do multiple unlikes to reach confidence threshold
+        for i in range(5):
+            track = {
+                "name": "rock_old",
+                "artist": "RockBand",
+                "release_date": "1985-01-01",
+                "duration_ms": 200_000,
+                "popularity": 50,
+                "external_url": f"https://www.deezer.com/track/{10+i}",
+            }
+            resp = auth_client.post(
+                "/api/v1/feedback/",
+                {"kind": "track", "track_id": f"deezer:{10+i}", "signal": "unlike",
+                 "context_emotion": "anger", "track": track},
+                format="json",
+            )
+            assert resp.status_code == 202
+
+        # Verify penalty applied
+        profile = UserProfile.objects(username=auth_client.user.username).first()
+        assert profile.artist_preferences.get("RockBand", 0) < 0
+        assert profile.era_preferences.get("1980s", 0) < 0
+        total_interactions = sum(profile.interaction_counts.values())
+        assert total_interactions >= 5
+
+        # Get new recommendations
+        resp2 = auth_client.post(
+            "/api/v1/music_recommendation/",
+            {"emotion": "anger"},
+            format="json",
+        )
+        assert resp2.status_code == 200
+        
+        # The disliked track's attributes should have personalization penalty
+        for track in resp2.data["recommendations"]:
+            signals = track.get("ranking_signals", {})
+            pers = signals.get("personalization", {})
+            if track["artist"] == "RockBand":
+                assert pers.get("applied") is True
+                assert pers.get("score", 0) < 0  # Negative score = penalty

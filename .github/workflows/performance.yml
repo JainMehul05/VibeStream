@@ -1,0 +1,56 @@
+name: Performance Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target API URL (e.g., https://vibestream-backend-api.vercel.app)'
+        required: true
+      test_type:
+        description: 'Test type'
+        required: true
+        type: choice
+        options: [smoke, load, stress]
+        default: 'smoke'
+  workflow_call:
+    inputs:
+      target_url:
+        required: true
+        type: string
+      test_type:
+        required: true
+        type: string
+        default: 'smoke'
+
+jobs:
+  performance-test:
+    name: k6 Performance Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup k6
+        uses: grafana/k6-action@v0.2.0
+        with:
+          version: latest
+
+      - name: Run k6 test
+        env:
+          API_URL: ${{ inputs.target_url }}
+        run: |
+          cd performance-tests
+          if [ "${{ inputs.test_type }}" = "smoke" ]; then
+            k6 run smoke-test.js -e API_URL=${{ inputs.target_url }}
+          elif [ "${{ inputs.test_type }}" = "load" ]; then
+            k6 run load-test.js -e API_URL=${{ inputs.target_url }}
+          else
+            k6 run stress-test.js -e API_URL=${{ inputs.target_url }}
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ inputs.test_type }}-${{ github.run_id }}
+          path: performance-tests/*.json

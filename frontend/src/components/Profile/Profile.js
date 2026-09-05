@@ -26,6 +26,7 @@ import {
   Clear,
   Delete,
   Email,
+  Favorite,
   HistoryToggleOff,
   Key,
   LibraryMusic,
@@ -43,6 +44,10 @@ import {
   TextFields,
   Visibility,
   VisibilityOff,
+  Psychology,
+  AutoAwesomeMosaic,
+  FavoriteBorder,
+  TrendingUp,
 } from "@mui/icons-material";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
@@ -100,6 +105,226 @@ const MOOD_EMOJI = {
   amused: "😄",
 };
 const moodEmoji = (mood) => MOOD_EMOJI[(mood || "").toLowerCase()] || "🎧";
+
+// ---------- Personalization Dashboard ----------
+function PersonalizationDashboard({ userData, isDarkMode, styles }) {
+  if (!userData) return null;
+
+  const prefs = {
+    favoriteGenres: Object.entries(userData.genre_preferences || {})
+      .filter(([, v]) => v > 0.1)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([k]) => k),
+    favoriteArtists: Object.entries(userData.artist_preferences || {})
+      .filter(([, v]) => v > 0.1)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([k]) => k),
+    favoriteEras: Object.entries(userData.era_preferences || {})
+      .filter(([, v]) => v > 0.1)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([k]) => k),
+    favoriteMoods: Object.entries(userData.mood_preferences || {})
+      .filter(([, v]) => v > 0.1)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([k]) => k),
+    dislikedGenres: Object.entries(userData.genre_preferences || {})
+      .filter(([, v]) => v < -0.1)
+      .sort(([, a], [, b]) => a - b)
+      .slice(0, 3)
+      .map(([k]) => k),
+    dislikedArtists: Object.entries(userData.artist_preferences || {})
+      .filter(([, v]) => v < -0.1)
+      .sort(([, a], [, b]) => a - b)
+      .slice(0, 3)
+      .map(([k]) => k),
+    explorationLevel: userData.exploration_preference || 0.3,
+    totalInteractions: Object.values(userData.interaction_counts || {}).reduce((a, b) => a + b, 0),
+  };
+
+  const hasData = prefs.favoriteGenres.length > 0 || 
+                  prefs.favoriteArtists.length > 0 || 
+                  prefs.favoriteEras.length > 0 || 
+                  prefs.favoriteMoods.length > 0 ||
+                  prefs.dislikedGenres.length > 0 ||
+                  prefs.dislikedArtists.length > 0;
+
+  if (!hasData && prefs.totalInteractions < 5) {
+    return (
+      <Paper elevation={3} sx={styles.section}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1.5}
+          sx={{ mb: 2 }}
+        >
+          <Box sx={styles.sectionIcon}>
+            <Psychology />
+          </Box>
+          <SectionTitle
+            text="Your Music Profile"
+            hint="Your preferences will appear here as you like/dislike tracks."
+          />
+        </Stack>
+        <Box sx={styles.chipsWrap}>
+          <Chip
+            label="Keep liking and disliking tracks to build your profile"
+            variant="outlined"
+            size="small"
+            sx={{ maxWidth: 400 }}
+          />
+        </Box>
+      </Paper>
+    );
+  }
+
+  const getExplorationLabel = (level) => {
+    if (level < 0.2) return "Low (Exploit)";
+    if (level < 0.5) return "Medium";
+    return "High (Explore)";
+  };
+
+  return (
+    <Paper elevation={3} sx={styles.section}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1.5}
+        sx={{ mb: 2 }}
+      >
+        <Box sx={styles.sectionIcon}>
+          <Psychology />
+        </Box>
+        <SectionTitle
+          text="Your Music Profile"
+          hint="Learned from your likes, dislikes, and listening history."
+        />
+      </Stack>
+      <Stack spacing={2} sx={{ mt: 1 }}>
+        {prefs.favoriteGenres.length > 0 && (
+          <PreferenceChips
+            icon={<MusicNote />}
+            title="Favorite Genres"
+            items={prefs.favoriteGenres}
+            color="#ff4d4d"
+            isDark={isDarkMode}
+          />
+        )}
+        {prefs.favoriteArtists.length > 0 && (
+          <PreferenceChips
+            icon={<Person />}
+            title="Favorite Artists"
+            items={prefs.favoriteArtists}
+            color="#ff7a59"
+            isDark={isDarkMode}
+          />
+        )}
+        {prefs.favoriteEras.length > 0 && (
+          <PreferenceChips
+            icon={<AutoAwesomeMosaic />}
+            title="Favorite Eras"
+            items={prefs.favoriteEras}
+            color="#ec4899"
+            isDark={isDarkMode}
+          />
+        )}
+        {prefs.favoriteMoods.length > 0 && (
+          <PreferenceChips
+            icon={<Favorite />}
+            title="Favorite Moods"
+            items={prefs.favoriteMoods.map(m => ({ label: m, emoji: moodEmoji(m) }))}
+            color="#22c55e"
+            isDark={isDarkMode}
+            renderItem={(item) => (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span aria-hidden>{item.emoji}</span>
+                <span>{item.label}</span>
+              </span>
+            )}
+          />
+        )}
+        {(prefs.dislikedGenres.length > 0 || prefs.dislikedArtists.length > 0) && (
+<PreferenceChips
+            icon={<FavoriteBorder />}
+            title="Avoiding"
+            items={[
+              ...prefs.dislikedGenres.map(g => ({ label: g, prefix: 'Genre: ' })),
+              ...prefs.dislikedArtists.map(a => ({ label: a, prefix: 'Artist: ' }))
+            ]}
+            color="#ef4444"
+            isDark={isDarkMode}
+            renderItem={(item) => (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span>{item.prefix}</span>
+                <span>{item.label}</span>
+              </span>
+            )}
+          />
+        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', pt: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TrendingUp sx={{ fontSize: 20, color: '#ff4d4d' }} />
+            <Box>
+              <Typography variant="caption" sx={{ color: isDarkMode ? '#bbb' : '#666' }}>
+                Exploration Level
+              </Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, fontFamily: 'Poppins', color: isDarkMode ? '#fff' : '#1a1a1a' }}>
+                {getExplorationLabel(prefs.explorationLevel)}
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <AutoAwesome sx={{ fontSize: 20, color: '#ff7a59' }} />
+            <Box>
+              <Typography variant="caption" sx={{ color: isDarkMode ? '#bbb' : '#666' }}>
+                Total Interactions
+              </Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, fontFamily: 'Poppins', color: isDarkMode ? '#fff' : '#1a1a1a' }}>
+                {prefs.totalInteractions}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </Stack>
+    </Paper>
+  );
+}
+
+function PreferenceChips({ icon, title, items, color, isDark, renderItem }) {
+  return (
+    <Box>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+        <Box sx={{ ...styles.sectionIcon, width: 36, height: 36, background: color }}>
+          {icon}
+        </Box>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, fontFamily: 'Poppins', color: isDark ? '#fff' : '#1a1a1a' }}>
+          {title}
+        </Typography>
+      </Stack>
+      <Box sx={styles.chipsWrap}>
+        {items.map((item, i) => {
+          const label = renderItem ? renderItem(item) : item.label;
+          return (
+            <Chip
+              key={`${title}-${i}`}
+              label={label}
+              size="small"
+              variant="outlined"
+              sx={{
+                borderColor: color,
+                color: color,
+                '& .MuiChip-label': { fontWeight: 600 },
+              }}
+            />
+          );
+        })}
+      </Box>
+    </Box>
+  );
+}
 
 const ProfilePage = () => {
   const [userData, setUserData] = useState(null);
@@ -543,6 +768,13 @@ const ProfilePage = () => {
               />
             </Box>
           </Paper>
+
+          {/* ---------- PERSONALIZATION DASHBOARD ---------- */}
+          <PersonalizationDashboard 
+            userData={userData} 
+            isDarkMode={isDarkMode} 
+            styles={styles} 
+          />
 
           {/* ---------- MOOD HISTORY ---------- */}
           <Paper elevation={3} sx={styles.section}>

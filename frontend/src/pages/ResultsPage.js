@@ -31,6 +31,7 @@ import {
   Forest,
   GraphicEq,
   HeadphonesOutlined,
+  HelpOutlined,
   Language,
   LocalBar,
   LocalFireDepartment,
@@ -1079,6 +1080,26 @@ function TrackRow({
                 )}
               </IconButton>
             </Tooltip>
+            {/* Why this song? */}
+            {track.explanation && (
+              <Tooltip title="Why this song?">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    alert(track.explanation);
+                  }}
+                  aria-label="Why this song?"
+                  sx={{
+                    color: isDark ? "#9aa" : "#777",
+                    "&:hover": { color: "#ff4d4d" },
+                  }}
+                >
+                  <HelpOutlined sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
             <Button
               component="a"
               href={track.external_url}

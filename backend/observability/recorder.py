@@ -77,7 +77,15 @@ class MetricsRecorder:
         )
         self._status_codes: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
 
-    def record(self, endpoint: str, method: str, status: int, latency_ms: float) -> None:
+    def record(
+        self,
+        endpoint: str,
+        method: str,
+        status: int,
+        latency_ms: float,
+        request_id: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
         """Record one request. NEVER raises."""
         try:
             key = f"{method} {endpoint}"

@@ -7,6 +7,7 @@ docs/PRODUCTION_REFACTOR_PLAN.md for the full architecture.
 """
 
 import os
+import logging
 from pathlib import Path
 
 from decouple import config
@@ -135,6 +136,10 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Correlation ID middleware: must be early to capture request_id for all downstream logs
+    "api.middleware.CorrelationIdMiddleware",
+    # Idempotency middleware: checks Idempotency-Key header before view execution
+    "api.middleware.IdempotencyMiddleware",
     # Metrics LAST so it observes the FULL request lifecycle (including
     # CORS preflight handling, security headers, etc.). The middleware
     # is fully defensive -- a metrics failure can never break a request.
@@ -239,6 +244,7 @@ REST_FRAMEWORK = {
         "anon": config("THROTTLE_ANON", default="60/min"),
         "user": config("THROTTLE_USER", default="240/min"),
     },
+    "EXCEPTION_HANDLER": "api.errors.custom_exception_handler",
 }
 
 # JWT lifetimes (consumed by users/tokens.py).
@@ -288,7 +294,7 @@ CORS_ALLOWED_ORIGINS = [
 # "Access-Control-Allow-Origin: *" together with credentials. Header-based
 # JWT auth does not need credentialed (cookie) requests.
 CORS_ALLOW_CREDENTIALS = False
-CORS_ALLOW_HEADERS = ["Authorization", "Content-Type", "X-CSRFToken"]
+CORS_ALLOW_HEADERS = ["Authorization", "Content-Type", "X-CSRFToken", "Idempotency-Key"]
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
 # --- Caching --------------------------------------------------------------
@@ -300,6 +306,11 @@ if _REDIS_URL:
         "default": {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
             "LOCATION": _REDIS_URL,
+            "OPTIONS": {
+                "CONNECTION_POOL_KWARGS": {"max_connections": 20},
+                "SOCKET_CONNECT_TIMEOUT": 2,
+                "SOCKET_TIMEOUT": 2,
+            },
         }
     }
 else:
@@ -369,3 +380,53 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- Structured Logging ---------------------------------------------------
+# Configure structlog for JSON output with request correlation
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {
+            "()": "api.logging.JsonFormatter",
+        },
+        "console": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json" if not DEBUG else "console",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "django": {"level": "WARNING"},
+        "django.request": {"level": "WARNING"},
+        "api": {"level": "INFO"},
+        "observability": {"level": "INFO"},
+    },
+}
+
+# Structlog configuration
+import structlog
+
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer() if not DEBUG else structlog.dev.ConsoleRenderer(),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+# Pipeline version for cache invalidation
+PIPELINE_VERSION = config("PIPELINE_VERSION", default="1")

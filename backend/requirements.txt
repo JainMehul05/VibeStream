@@ -35,6 +35,12 @@ whitenoise==6.7.0
 gunicorn==23.0.0
 tzdata==2024.2
 
+# --- Redis (caching, rate limiting, idempotency, job queue) ---
+redis==5.0.1
+
+# --- Structured logging ---
+structlog==24.1.0
+
 # --- Error monitoring (Sentry) ---
 # The [django] extra auto-enables DjangoIntegration -- the only wiring is a
 # single sentry_sdk.init() in settings.py, which no-ops unless SENTRY_DSN is

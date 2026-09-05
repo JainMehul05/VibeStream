@@ -9,7 +9,7 @@ are pure and need neither a database nor the ``auth`` app installed. They
 also verify the existing PBKDF2 hashes migrated out of SQLite unchanged.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from django.contrib.auth.hashers import check_password, make_password
 from mongoengine import (
@@ -139,9 +139,14 @@ class WebAuthnChallenge(Document):
     # Set for registration (ties the ceremony to the authed user). For a
     # usernameless login ceremony this is empty until a credential resolves.
     user_id = StringField()
-    created_at = DateTimeField(default=datetime.utcnow)
+    created_at = DateTimeField(default=lambda: datetime.now(timezone.utc))
     expires_at = DateTimeField(required=True)
 
     @property
     def is_expired(self) -> bool:
-        return datetime.utcnow() >= self.expires_at
+        now = datetime.now(timezone.utc)
+        expires = self.expires_at
+        # Handle naive datetimes (assume UTC)
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return now >= expires

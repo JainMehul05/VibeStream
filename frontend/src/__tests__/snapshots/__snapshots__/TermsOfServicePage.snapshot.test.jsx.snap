@@ -180,7 +180,7 @@ exports[`TermsOfServicePage snapshot matches the rendered markup 1`] = `
             class="MuiBox-root css-2l2e9r"
           >
             <p>
-              You agree
+              You agree 
               <strong>
                 not
               </strong>
@@ -224,7 +224,7 @@ exports[`TermsOfServicePage snapshot matches the rendered markup 1`] = `
             class="MuiBox-root css-2l2e9r"
           >
             <p>
-              Music recommendations are powered by
+              Music recommendations are powered by 
               <a
                 href="https://deezer.com"
                 rel="noreferrer"
@@ -261,7 +261,7 @@ exports[`TermsOfServicePage snapshot matches the rendered markup 1`] = `
             class="MuiBox-root css-2l2e9r"
           >
             <p>
-              Text, audio, and image inputs you submit are processed in-memory by our inference service and are
+              Text, audio, and image inputs you submit are processed in-memory by our inference service and are 
               <strong>
                 not retained
               </strong>
@@ -421,7 +421,7 @@ exports[`TermsOfServicePage snapshot matches the rendered markup 1`] = `
             class="MuiBox-root css-2l2e9r"
           >
             <p>
-              Questions about these terms?
+              Questions about these terms? 
               <a
                 href="mailto:hoangson091104@gmail.com"
               >
@@ -439,7 +439,7 @@ exports[`TermsOfServicePage snapshot matches the rendered markup 1`] = `
         <p
           class="MuiTypography-root MuiTypography-body1 css-vzgp1-MuiTypography-root"
         >
-          Questions about this agreement? Reach out at
+          Questions about this agreement? Reach out at 
           <a
             class="MuiBox-root css-1feb05w"
             href="mailto:hoangson091104@gmail.com"

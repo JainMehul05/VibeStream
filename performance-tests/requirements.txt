@@ -1,0 +1,5 @@
+# Performance testing dependencies
+locust>=2.15.0
+
+# For k6 tests, install k6 separately:
+# https://k6.io/docs/getting-started/installation/

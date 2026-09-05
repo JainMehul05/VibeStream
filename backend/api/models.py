@@ -6,7 +6,7 @@ This module is the single source of truth for ``UserProfile``;
 
 from datetime import datetime
 
-from mongoengine import DateTimeField, DictField, Document, ListField, StringField
+from mongoengine import DateTimeField, DictField, Document, FloatField, ListField, StringField
 
 
 class UserProfile(Document):
@@ -52,3 +52,22 @@ class UserProfile(Document):
     # feature vector. Empty until the user's first track signal arrives.
     mood_calibration = DictField(default=dict)
     taste_profile = DictField(default=dict)
+
+    # --- Phase 2: Explicit user preference profile ---
+    # Genre preferences: {genre: weight} where weight in [-1, 1]
+    # Positive = like, Negative = dislike, 0 = neutral/unknown
+    genre_preferences = DictField(default=dict)
+    # Artist preferences: {artist_name: weight} weight in [-1, 1]
+    artist_preferences = DictField(default=dict)
+    # Era/decade preferences: {decade_bucket: weight} weight in [-1, 1]
+    # decade_bucket: pre1960, 1960s, 1970s, 1980s, 1990s, 2000s, 2010s
+    era_preferences = DictField(default=dict)
+    # Mood preferences: {mood: weight} weight in [-1, 1]
+    mood_preferences = DictField(default=dict)
+    # Interaction counts for cold-start handling
+    interaction_counts = DictField(default=dict)  # {signal: count}
+    # Exploration preference (0.0 = exploit, 1.0 = explore)
+    exploration_preference = FloatField(default=0.3)
+    # Metadata
+    last_updated = DateTimeField(default=datetime.utcnow)
+    profile_version = 2  # for migration tracking

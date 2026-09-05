@@ -4,6 +4,8 @@ These views contain NO machine-learning code or dependencies. Text-emotion
 and music-recommendation requests are proxied to the Modal inference
 service; speech and facial uploads go directly from the browser to Modal
 (see docs/PRODUCTION_REFACTOR_PLAN.md §3).
+
+Phase 3: Added recommendation caching for authenticated users.
 """
 
 import logging
@@ -25,8 +27,9 @@ from backend.api_docs import (
 from . import bandit
 from .calibration import apply_calibration
 from .models import UserProfile
-from integrations.clients import InferenceServiceError, music_recommendation as modal_music
-from integrations.clients import text_emotion as modal_text
+from .recommendation_pipeline import run_pipeline, PipelineError
+from .cache import get_cached_recommendations, set_cached_recommendations
+from integrations.clients import InferenceServiceError, text_emotion as modal_text
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +88,8 @@ _MUSIC_BODY = _obj(
             example=["sadness", "sadness", "joy"],
             description="Recent moods (oldest first). Used to blend recurring-mood tracks into the result. Max 50 entries — extras are ignored.",
         ),
+        "genre": openapi.Schema(type=openapi.TYPE_STRING, nullable=True, example="pop",
+                                description="Optional genre filter for recommendations."),
     },
     required=["emotion"],
 )
@@ -194,7 +199,7 @@ def text_emotion(request):
 @swagger_auto_schema(
     method="post",
     tags=[Tags.MUSIC],
-    operation_summary="Mood → Deezer recommendations",
+    operation_summary="Mood → Deezer recommendations (with caching)",
     operation_description=(
         "Returns a list of Deezer tracks matched to the given emotion. "
         "When `history` is provided, the Modal recommender blends in "
@@ -206,7 +211,9 @@ def text_emotion(request):
         "**No auth required** — Django uses the shared service token "
         "to call Modal. DRF's `AnonRateThrottle` (60/min) applies. "
         "`market` is accepted for backwards compatibility with the "
-        "previous Spotify-based recommender but is ignored by Deezer."
+        "previous Spotify-based recommender but is ignored by Deezer.\n\n"
+        "**Caching**: Authenticated users' recommendations are cached for 10 minutes. "
+        "Cache is invalidated on feedback submission. Anonymous users are not cached."
     ),
     request_body=_MUSIC_BODY,
     responses={
@@ -236,35 +243,36 @@ def music_recommendation(request):
     if genre is not None and not isinstance(genre, str):
         genre = None
 
+    profile = _profile_for_request(request)
+
+    # Check cache for authenticated users only
+    user_id = profile.username if profile else None
+    if user_id:
+        cached = get_cached_recommendations(user_id, emotion, genre, history)
+        if cached is not None:
+            cached["market"] = market
+            logger.info("recommendation_cache_hit user_id=%s emotion=%s", user_id, emotion)
+            return Response(cached, status=status.HTTP_200_OK)
+
     try:
-        result = modal_music(emotion, market, history, genre)
-    except InferenceServiceError:
-        logger.exception("music_recommendation proxy call failed")
+        result = run_pipeline(
+            emotion=emotion,
+            user_profile=profile,
+            history=history,
+            genre=genre,
+        )
+    except PipelineError:
+        logger.exception("Recommendation pipeline failed for emotion=%s", emotion)
+        return Response(_BAD_GATEWAY, status=status.HTTP_502_BAD_GATEWAY)
+    except Exception:  # noqa: BLE001
+        logger.exception("Unexpected error in recommendation pipeline")
         return Response(_BAD_GATEWAY, status=status.HTTP_502_BAD_GATEWAY)
 
-    # Bandit re-rank: when the caller is signed in AND has cleared the
-    # cold-start floor, reorder the candidate list by Thompson-sampled
-    # posterior score. Cold users (and anonymous traffic) get the
-    # EWMA+Markov order back unchanged -- the bandit is identity-when-cold
-    # by construction.
-    profile = _profile_for_request(request)
-    if profile is not None and isinstance(result, dict):
-        recs = result.get("recommendations") or []
-        if recs:
-            try:
-                reranked = bandit.rerank(
-                    list(recs),
-                    taste_profile=profile.taste_profile or {},
-                    context_emotion=result.get("emotion") or emotion,
-                )
-                if reranked is not recs:
-                    result = dict(result)
-                    result["recommendations"] = reranked
-            except Exception:  # noqa: BLE001
-                logger.warning(
-                    "bandit rerank failed for user=%s -- returning base order",
-                    profile.username,
-                    exc_info=False,
-                )
+    # Market is accepted for API compatibility but ignored by Deezer
+    result["market"] = market
+
+    # Cache for authenticated users (not degraded)
+    if user_id and not result.get("degraded"):
+        set_cached_recommendations(user_id, emotion, result, genre, history)
 
     return Response(result, status=status.HTTP_200_OK)

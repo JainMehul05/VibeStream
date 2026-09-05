@@ -13,6 +13,16 @@ services:
       - mongo_data:/data/db
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: vibestream_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
   backend:
     build:
       context: .
@@ -29,8 +39,29 @@ services:
       - MODAL_INFERENCE_URL=${MODAL_INFERENCE_URL:-}
       - MODAL_SERVICE_TOKEN=${MODAL_SERVICE_TOKEN:-local-dev-service-token}
       - CORS_ALLOWED_ORIGINS=http://localhost:3000
+      - CACHE_REDIS_URL=redis://redis:6379/0
     depends_on:
       - mongodb
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: vibestream_worker
+    command: python -m api.worker
+    environment:
+      - DEBUG=True
+      - MONGO_DB_URI=mongodb://mongodb:27017/emotion_based_music_db
+      - SECRET_KEY=${SECRET_KEY:-local-dev-secret-key}
+      - JWT_SIGNING_KEY=${JWT_SIGNING_KEY:-local-dev-jwt-key}
+      - MODAL_INFERENCE_URL=${MODAL_INFERENCE_URL:-}
+      - MODAL_SERVICE_TOKEN=${MODAL_SERVICE_TOKEN:-local-dev-service-token}
+      - CACHE_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - mongodb
+      - redis
     restart: unless-stopped
 
   frontend:
@@ -48,3 +79,4 @@ services:
 
 volumes:
   mongo_data:
+  redis_data:

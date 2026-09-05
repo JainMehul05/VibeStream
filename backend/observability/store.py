@@ -127,13 +127,15 @@ def insert_event(
     status: int,
     latency_ms: float,
     container_id: str,
+    request_id: str | None = None,
+    user_id: str | None = None,
 ) -> None:
     """Insert one metric event. Never raises."""
     try:
         coll = _get_collection()
         if coll is None:
             return
-        coll.insert_one({
+        doc = {
             "ts": datetime.now(timezone.utc),
             "meta": {
                 "service": SERVICE_NAME,
@@ -144,7 +146,12 @@ def insert_event(
             },
             "status": int(status),
             "latency_ms": float(latency_ms),
-        })
+        }
+        if request_id:
+            doc["meta"]["request_id"] = request_id
+        if user_id:
+            doc["meta"]["user_id"] = user_id
+        coll.insert_one(doc)
     except Exception:  # noqa: BLE001
         logger.warning("backend metrics insert failed (silently skipping)")
 

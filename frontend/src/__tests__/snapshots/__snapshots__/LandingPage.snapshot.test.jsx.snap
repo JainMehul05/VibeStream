@@ -42,7 +42,7 @@ exports[`LandingPage snapshot matches the rendered markup 1`] = `
               class="MuiTypography-root MuiTypography-h3 reveal reveal-delay-1 css-k519cc-MuiTypography-root is-visible"
               data-reveal="true"
             >
-              Welcome to
+              Welcome to 
               <span
                 class="MuiBox-root css-gvm951"
               >
@@ -623,7 +623,7 @@ exports[`LandingPage snapshot matches the rendered markup 1`] = `
         data-reveal="true"
       >
         <div
-          class="MuiBox-root css-1wdmst"
+          class="MuiBox-root css-112kjwa"
         >
           <div
             class="MuiBox-root css-jkw1bk"

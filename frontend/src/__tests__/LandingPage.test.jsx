@@ -3,6 +3,13 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { DarkModeContext } from "../context/DarkModeContext";
 
+// Mock PageBackground to avoid WebGL detection issues in jsdom
+jest.mock("../components/PageBackground", () => {
+  return function PageBackgroundMock({ isDarkMode, children }) {
+    return <div data-testid="page-background" data-is-dark-mode={isDarkMode}>{children}</div>;
+  };
+});
+
 // Mock react-slick as a no-op component
 jest.mock("react-slick", () => () => <div data-testid="slider-mock" />);
 

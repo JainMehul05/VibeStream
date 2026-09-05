@@ -47,6 +47,13 @@ def _reset_feedback_store():
     feedback_store.reset_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def _enable_feedback_sync_mode(monkeypatch):
+    """Enable synchronous feedback processing for tests."""
+    from django.conf import settings
+    monkeypatch.setattr(settings, "FEEDBACK_SYNC_MODE", True, raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Store helpers
 # ---------------------------------------------------------------------------

@@ -9,7 +9,8 @@
 [![Modal](https://img.shields.io/badge/Modal-Serverless-7B68EE?style=for-the-badge&logo=modal&logoColor=white)](https://modal.com)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://mongodb.com/atlas)
 [![Deezer](https://img.shields.io/badge/Deezer-API-FF6600?style=for-the-badge&logo=deezer&logoColor=white)](https://developers.deezer.com)
-[![Tests](https://img.shields.io/badge/Tests-477%20passing-34D399?style=for-the-badge&logo=pytest)](https://github.com/JainMehul05/VibeStream/actions)
+[![Tests](https://img.shields.io/badge/Tests-502%20passing%2C%206%20failing-34D399?style=for-the-badge&logo=pytest)](https://github.com/JainMehul05/VibeStream/actions)
+[![Phase 4](https://img.shields.io/badge/Phase%204-Evaluation%20%2B%20GenAI%20%2B%20Cloud-FF6B35?style=for-the-badge)]()
 
 ---
 
@@ -382,7 +383,7 @@ cd modal_inference && source .venv/bin/activate && modal serve modal_app.py
 
 ## Testing
 
-### Backend (245 tests)
+### Backend (263 tests)
 ```bash
 cd backend
 source .venv/bin/activate
@@ -399,11 +400,11 @@ pytest -q -k "not functional"   # Fast (172 tests, no ML deps)
 pytest -q                       # Full (172 + 10 functional, needs ML deps)
 ```
 
-### Frontend (60 tests)
+### Frontend (56 tests)
 ```bash
 cd frontend
 npm test -- --watchAll=false --passWithNoTests
-# 60 tests, 10 snapshots (1 pre-existing isolation flake in full suite)
+# 56 tests (50 passing, 6 pre-existing WebGL/jsdom failures in LandingPage)
 ```
 
 ### Full CI (GitHub Actions)
@@ -500,31 +501,44 @@ The repository includes infrastructure definitions for self-hosting:
 
 ## Performance Evaluation
 
-*No production benchmarks are available. The following describes evaluation methodology:*
+**Phase 4 Evaluation Complete** — Offline synthetic evaluation with ablation study.
 
-| Metric | Measurement Approach |
-|--------|---------------------|
-| **Latency (text)** | `POST /api/v1/text_emotion/` p50/p95/p99 via `/api/v1/metrics/` |
-| **Latency (speech/facial)** | Modal `/metrics` + client-side timing |
-| **Recommendation Quality** | Offline: NDCG@k on historical feedback; Online: CTR, skip rate, dwell time |
-| **Personalization Lift** | A/B: bandit re-rank vs. base EWMA+Markov order |
-| **Calibration Accuracy** | % predictions rewritten after ≥3 corrections |
-| **Cold-start Safety** | Verify identity ordering for users with <20 events |
+| Metric | Measurement Approach | Result (Full System) |
+|--------|---------------------|---------------------|
+| **NDCG@10** | Offline synthetic evaluation | 0.2935 |
+| **Hit Rate@10** | Offline synthetic evaluation | 0.6316 |
+| **Precision@10** | Offline synthetic evaluation | 0.0930 |
+| **MRR** | Offline synthetic evaluation | 0.5431 |
+| **Personalization Lift** | Ablation: Personalization vs Base | +915% NDCG |
+| **Diversity Gain** | Ablation: Diversity vs Personalization | +270% unique artists |
+| **Cold-start Safety** | Verify identity ordering for users with <20 events | PASS (unit tests) |
+| **Latency (text)** | `POST /api/v1/text_emotion/` p50/p95/p99 via `/api/v1/metrics/` | PENDING (deploy) |
+| **Latency (speech/facial)** | Modal `/metrics` + client-side timing | PENDING (deploy) |
 
-*No production traffic → no latency/accuracy numbers to report.*
+**Full Evaluation Report**: [PHASE_4_EVALUATION.md](PHASE_4_EVALUATION.md)
+
+*Label: OFFLINE SYNTHETIC EVALUATION — No real user data used. Results should NOT be interpreted as production performance.*
 
 ---
 
 ## Future Improvements
 
-| Area | Planned |
-|------|---------|
-| **Caching** | Shared Redis cache (Django + Modal), cache invalidation |
-| **Feedback Processing** | Event-driven workers (Celery/RQ), idempotency keys |
-| **Recommendation Eval** | Offline NDCG@k, online A/B framework |
-| **Reliability** | Idempotency keys, distributed tracing (OpenTelemetry) |
-| **Load Testing** | k6 scripts against staging |
-| **Advanced Personalization** | Contextual bandit with richer features, offline LoRA fine-tuning |
+| Area | Status | Planned |
+|------|--------|---------|
+| **Caching** | ✅ Done | Shared Redis cache, cache invalidation on feedback |
+| **Feedback Processing** | ✅ Done | Event-driven workers, idempotency keys, retries, DLQ |
+| **Recommendation Eval** | ✅ Done | Offline NDCG@k, ablation study, cold-start, diversity |
+| **Reliability** | ✅ Done | Idempotency keys, retries, dead letter queue |
+| **Load Testing** | 🟡 Scripts Ready | k6 scripts against staging (requires deploy) |
+| **Advanced Personalization** | 🔄 Future | Contextual bandit with richer features, offline LoRA fine-tuning |
+| **GenAI Assistant** | ✅ Done | Structured intent, tool calling, schema validation |
+| **Cloud Deployment** | 🟡 Config Ready | Vercel + Modal + Upstash + Railway (needs credentials) |
+| **CI/CD** | ✅ Done | GitHub Actions: lint → test → build → deploy → verify |
+| **Observability** | ✅ Done | Time-series metrics, health checks, structured logs |
+
+---
+
+*Phase 4 completed core evaluation, GenAI, and CI/CD. Cloud deployment and load testing require credential configuration and execution.*
 
 ---
 
@@ -536,15 +550,22 @@ The repository includes infrastructure definitions for self-hosting:
 - Original author: Son Nguyen (hoangson091104@gmail.com)
 - License: MIT (preserved)
 
-**Substantial modifications in VibeStream:**
+**Substantial modifications in VibeStream (Phases 1-4):**
 - API versioning (`/api/v1/`)
-- Backend restructuring (`integrations/`, `common/`, `api/`, `users/`, `observability/`)
+- Backend restructuring (`integrations/`, `common/`, `api/`, `users/`, `observability/`, `genai/`, `evaluation/`)
 - Thompson Sampling bandit + mood calibration (RL personalization)
+- Explicit preference profile (genre/artist/era/mood)
+- Diversity re-ranking (MMR)
+- Explanation generation (truthful, no hallucination)
 - WebAuthn/Passkeys authentication
-- Comprehensive test coverage (245 backend + 172 Modal + 60 frontend)
+- Async event-driven worker (Redis queue, retries, DLQ, idempotency)
+- Redis caching (recommendation cache, rate limiting)
 - Production-grade observability (MongoDB time-series metrics)
+- GenAI Assistant (structured intent, validated tool calling, Pydantic schemas)
+- Comprehensive evaluation framework (NDCG, Hit Rate, ablation, cold-start, diversity)
 - OpenAPI 3.0 specification with v1 paths
-- CI/CD pipeline with coverage reporting
+- CI/CD pipeline with coverage reporting (GitHub Actions)
+- Load testing scripts (k6)
 - Removed legacy `ai_ml/src/rl/` duplication
 
 ---
@@ -572,6 +593,8 @@ Upstream Moodify is also MIT-licensed.
 ## Disclaimer
 
 This project is for educational and portfolio purposes. The production URLs referenced (`vibestream-app.vercel.app`, `vibestream-backend-api.vercel.app`, `YOUR-MODAL-INFERENCE-HOST`) are **placeholders** — no live VibeStream deployment currently exists. The original Moodify deployment remains accessible at `moodify-app.vercel.app`.
+
+**Phase 4 Status**: Core evaluation, GenAI assistant, and CI/CD complete. Cloud deployment and load testing pending credential configuration and execution. All infrastructure configurations are ready for deployment.
 
 ---
 

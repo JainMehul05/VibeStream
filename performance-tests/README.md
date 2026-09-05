@@ -1,72 +1,164 @@
-# Moodify performance tests
+# Performance Tests for VibeStream
 
-[k6](https://k6.io/) scripts for smoke, load and stress-testing the
-Moodify backend. They run against any of the deployed environments
-(Vercel preview, prod, or a self-hosted instance) by overriding the
-`API_URL` env var.
+This directory contains load testing scripts for the VibeStream API.
 
-## Files
+## Available Test Suites
 
-```
-performance-tests/
-├── smoke-test.js     1 VU, 30 s — sanity probe (run on every deploy)
-├── load-test.js      multi-stage 0 → 200 VU — capacity baseline
-└── stress-test.js    soak + spike — long-tail latency + failure recovery
-```
+### 1. k6 Tests (Recommended for Production)
 
-## Quick start
+Requires [k6](https://k6.io/docs/getting-started/installation/) installed.
 
 ```bash
-# Install k6 (macOS / Linux / Windows)
-brew install k6           # macOS
-# or: https://k6.io/docs/get-started/installation/
+# Smoke test (quick validation)
+k6 run smoke-test.js -e API_URL=http://localhost:8000
 
-# Smoke against prod
-API_URL=https://api.vibestream.example.com k6 run smoke-test.js
+# Full load test
+k6 run load-test.js -e API_URL=http://localhost:8000
 
-# Load test against prod (CAREFUL — ramps to 200 VU)
-API_URL=https://api.vibestream.example.com k6 run load-test.js
-
-# Stress / soak (1 hour run)
-API_URL=https://api.vibestream.example.com k6 run stress-test.js
-
-# Via the root Makefile
-make perf-smoke
-make perf-load
+# Stress test (extreme load)
+k6 run stress-test.js -e API_URL=https://api.vibestream.example.com
 ```
 
-## What each script asserts
+#### Test Scenarios
 
-| Script        | Profile                                       | Thresholds                                             |
-| ------------- | --------------------------------------------- | ------------------------------------------------------ |
-| `smoke-test`  | 1 VU, 30 s                                    | p95 < 1 s, error rate < 1 %                            |
-| `load-test`   | 10 → 50 → 100 → 200 VU over 20 min            | p95 < 2 s overall; per-endpoint p95s for login/songs/analyze |
-| `stress-test` | 50 VU sustained 30 min + 500 VU spike 2 min   | p99 < 5 s; recovery to p95 < 2 s within 60 s of spike    |
+| Test | Duration | Max VUs | Purpose |
+|------|----------|---------|---------|
+| smoke-test.js | 30s | 1 | Quick CI/CD validation |
+| load-test.js | ~18m | 200 | Realistic load pattern |
+| stress-test.js | ~31m | 500 | Breaking point analysis |
 
-The Modal inference endpoints (`/text_emotion`, `/speech_emotion`,
-`/facial_emotion`) are intentionally not in the load mix — they're
-serverless and scale-to-zero, so a synthetic load test would either
-flood the cold-start path or cost real GPU minutes. Use the dedicated
-Modal stats dashboard (`make modal-stats`) for inference perf.
+#### Environment Variables
 
-## CI usage
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_URL` | `http://localhost:8000` | Base URL of the Django API |
+| `MODAL_URL` | `https://your-modal-url.modal.run` | Modal inference service URL |
+
+### 2. Locust Tests (Python-based, No External Dependencies)
+
+```bash
+# Install dependencies
+pip install locust
+
+# Run with web UI
+locust -f locustfile.py --host=http://localhost:8000
+
+# Run headless (CI/CD)
+locust -f locustfile.py --host=http://localhost:8000 --headless -u 50 -r 10 -t 5m --csv=results
+```
+
+#### User Types
+
+| Class | Weight | Description |
+|-------|--------|-------------|
+| `VibeStreamUser` | 1 | Authenticated user (full workflow) |
+| `AnonymousUser` | 1 | Public API access only |
+
+#### Tags for Filtering
+
+```bash
+# Run only recommendation tests
+locust -f locustfile.py --tags=recommendation
+
+# Run only authenticated tests
+locust -f locustfile.py --tags=feedback,profile
+
+# Exclude stress tests
+locust -f locustfile.py --exclude-tags=stress
+```
+
+### 3. Running in CI/CD
 
 ```yaml
-# .github/workflows/perf.yml
-- name: k6 smoke test
-  uses: grafana/k6-action@v0.3.1
-  with:
-    filename: performance-tests/smoke-test.js
-  env:
-    API_URL: ${{ vars.API_URL }}
+# GitHub Actions example
+- name: Run Performance Tests
+  run: |
+    # Start services
+    docker-compose up -d
+    
+    # Wait for readiness
+    sleep 30
+    
+    # Run smoke test
+    k6 run performance-tests/smoke-test.js -e API_URL=http://localhost:8000
+    
+    # Run load test (optional, for release branches)
+    if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+      k6 run performance-tests/load-test.js -e API_URL=http://localhost:8000
+    fi
 ```
 
-## Tuning
+### Test Endpoints Covered
 
-* **Higher load:** edit `options.stages` in `load-test.js` — increase
-  the `target` count gradually; k6 enforces an upper soft limit you can
-  raise with `--max-vus`.
-* **Custom thresholds:** add to `options.thresholds`. Threshold misses
-  fail the run with a non-zero exit so CI catches regressions.
-* **Per-endpoint tagging:** wrap requests with `{ tags: { endpoint: ... }}`
-  to slice the result UI by endpoint.
+| Endpoint | Authenticated | Anonymous | Weight |
+|----------|---------------|-----------|--------|
+| `GET /api/v1/health/` | ✓ | ✓ | High |
+| `POST /api/v1/text_emotion/` | ✓ | ✓ | Medium |
+| `POST /api/v1/music_recommendation/` | ✓ | ✓ | High |
+| `POST /api/v1/feedback/` | ✓ | ✗ | Medium |
+| `GET /api/v1/feedback/tracks/` | ✓ | ✗ | Low |
+| `GET /api/v1/users/user/profile/` | ✓ | ✗ | Low |
+| `GET /api/v1/metrics/` | Service token | ✗ | Very Low |
+
+### Test Data Requirements
+
+For authenticated tests, create test users in your database:
+
+```bash
+# Using Django shell
+python manage.py shell -c "
+from users.documents import User
+from users.tokens import issue_tokens
+for i in range(1, 6):
+    User.objects.create_user(f'loadtest{i}', 'loadtest{i}@test.com', 'loadtest123')
+"
+```
+
+### Interpreting Results
+
+| Metric | Target | Action if Exceeded |
+|--------|--------|-------------------|
+| `http_req_duration p95` | < 2s (load), < 5s (stress) | Optimize DB queries, add caching |
+| `http_req_failed rate` | < 1% (load), < 5% (stress) | Check error logs, scale workers |
+| `errors rate` | < 1% (load), < 5% (stress) | Investigate application errors |
+| `login_duration p95` | < 1s | Optimize auth/DB |
+| `recommend_duration p95` | < 1.5s | Check Modal/Redis/Mongo |
+
+### Local Development Testing
+
+```bash
+# 1. Start local services
+docker-compose up -d
+
+# 2. Run Django
+cd backend && python manage.py runserver
+
+# 3. Run Modal (in separate terminal)
+cd modal_inference && modal serve modal_app.py
+
+# 4. Run smoke test
+k6 run performance-tests/smoke-test.js -e API_URL=http://localhost:8000
+```
+
+### Performance Baselines (Target)
+
+| Metric | p50 | p95 | p99 |
+|--------|-----|-----|-----|
+| `GET /health` | < 10ms | < 50ms | < 100ms |
+| `POST /text_emotion` | < 200ms | < 800ms | < 2s |
+| `POST /music_recommendation` | < 300ms | < 1s | < 2s |
+| `POST /feedback` | < 50ms | < 200ms | < 500ms |
+| `GET /profile` | < 50ms | < 200ms | < 500ms |
+
+### Continuous Performance Monitoring
+
+Track these metrics over time in your observability platform:
+
+1. **API Latency** - p50, p95, p99 per endpoint
+2. **Error Rates** - 4xx/5xx by endpoint
+3. **Throughput** - requests/second
+4. **Cache Hit Rate** - Redis recommendation cache
+5. **Queue Depth** - Feedback event queue length
+6. **Worker Processing Time** - Feedback event processing duration
+7. **Database Query Time** - MongoDB slow query log
+8. **Modal Inference Latency** - Model inference time

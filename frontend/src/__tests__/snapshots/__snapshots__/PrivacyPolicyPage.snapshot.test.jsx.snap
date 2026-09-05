@@ -139,7 +139,7 @@ exports[`PrivacyPolicyPage snapshot matches the rendered markup 1`] = `
                 <strong>
                   Inference Inputs:
                 </strong>
-                 Text snippets, voice clips, or photos you submit for mood detection. Processed in-memory by our inference service and
+                 Text snippets, voice clips, or photos you submit for mood detection. Processed in-memory by our inference service and 
                 <strong>
                   not retained
                 </strong>
@@ -230,11 +230,11 @@ exports[`PrivacyPolicyPage snapshot matches the rendered markup 1`] = `
             class="MuiBox-root css-2l2e9r"
           >
             <p>
-              We use
+              We use 
               <strong>
                 localStorage
               </strong>
-               in your browser to keep your JWT access + refresh tokens so you stay signed in across tabs. We do
+               in your browser to keep your JWT access + refresh tokens so you stay signed in across tabs. We do 
               <strong>
                 not
               </strong>
@@ -385,7 +385,7 @@ exports[`PrivacyPolicyPage snapshot matches the rendered markup 1`] = `
             class="MuiBox-root css-2l2e9r"
           >
             <p>
-              Questions, concerns, or data-removal requests:
+              Questions, concerns, or data-removal requests: 
               <a
                 href="mailto:hoangson091104@gmail.com"
               >
@@ -403,7 +403,7 @@ exports[`PrivacyPolicyPage snapshot matches the rendered markup 1`] = `
         <p
           class="MuiTypography-root MuiTypography-body1 css-vzgp1-MuiTypography-root"
         >
-          Questions about this policy? Reach out at
+          Questions about this policy? Reach out at 
           <a
             class="MuiBox-root css-1feb05w"
             href="mailto:hoangson091104@gmail.com"

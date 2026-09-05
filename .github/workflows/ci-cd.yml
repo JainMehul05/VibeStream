@@ -1,0 +1,699 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ============================================================
+  # LINT & FORMAT
+  # ============================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend deps
+        run: |
+          cd backend
+          pip install -q -U pip
+          pip install -q -r requirements.txt
+          pip install -q ruff
+
+      - name: Run Ruff (backend)
+        run: |
+          cd backend
+          ruff check .
+
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          npm ci --no-audit --no-fund
+
+      - name: Run ESLint (frontend)
+        run: |
+          cd frontend
+          npx eslint --max-warnings=0 src
+
+      - name: Install modal deps
+        run: |
+          cd modal_inference
+          pip install -q -U pip
+          pip install -q -r requirements-dev.txt
+          pip install -q ruff
+
+      - name: Run Ruff (modal)
+        run: |
+          cd modal_inference
+          ruff check .
+
+  # ============================================================
+  # BACKEND TESTS
+  # ============================================================
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports: 27017:27017
+        options: --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'" --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          cd backend
+          pip install -q -U pip
+          pip install -q -r requirements.txt
+          pip install -q pytest pytest-cov mongomock
+
+      - name: Run tests
+        run: |
+          cd backend
+          python manage.py test --noinput -v 2
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          directory: backend
+          flags: backend
+
+  # ============================================================
+  # MODAL TESTS
+  # ============================================================
+  test-modal:
+    name: Modal Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          cd modal_inference
+          pip install -q -U pip
+          pip install -q -r requirements-dev.txt
+
+      - name: Run tests (unit only)
+        run: |
+          cd modal_inference
+          pytest -q -k "not functional" --tb=short
+
+  # ============================================================
+  # FRONTEND TESTS
+  # ============================================================
+  test-frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        run: |
+          cd frontend
+          npm ci --no-audit --no-fund
+
+      - name: Run tests
+        run: |
+          cd frontend
+          CI=true npm test -- --watchAll=false --passWithNoTests
+
+  # ============================================================
+  # GENAI TESTS
+  # ============================================================
+  test-genai:
+    name: GenAI Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          cd backend
+          pip install -q -U pip
+          pip install -q -r requirements.txt
+          pip install -q pydantic
+
+      - name: Run GenAI tests
+        run: |
+          cd backend
+          python genai/tests.py
+
+  # ============================================================
+  # EVALUATION TESTS
+  # ============================================================
+  test-evaluation:
+    name: Evaluation Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          cd backend
+          pip install -q -U pip
+          pip install -q -r requirements.txt
+          pip install -q numpy
+
+      - name: Run evaluation
+        run: |
+          cd backend
+          python evaluation/run_evaluation.py
+
+      - name: Upload evaluation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-evaluation-report
+          path: PHASE_4_EVALUATION.md
+
+  # ============================================================
+  # DOCKER BUILD
+  # ============================================================
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [lint, test-backend, test-modal, test-frontend, test-genai, test-evaluation]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (backend)
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/vibestream-backend
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata (frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/vibestream-frontend
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata (worker)
+        id: meta-worker
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/vibestream-worker
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push worker
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-worker.outputs.tags }}
+          labels: ${{ steps.meta-worker.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # DEPLOY MODAL
+  # ============================================================
+  deploy-modal:
+    name: Deploy Modal
+    runs-on: ubuntu-latest
+    needs: [test-modal]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Modal CLI
+        run: pip install -q modal
+
+      - name: Deploy Modal app
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          cd modal_inference
+          modal deploy modal_app.py
+
+  # ============================================================
+  # DEPLOY VERCEL (Backend)
+  # ============================================================
+  deploy-backend:
+    name: Deploy Backend (Vercel)
+    runs-on: ubuntu-latest
+    needs: [test-backend, docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy Backend to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID_BACKEND: ${{ secrets.VERCEL_PROJECT_ID_BACKEND }}
+        run: |
+          cd backend
+          vercel deploy --prod --yes --token=${VERCEL_TOKEN} --scope=${VERCEL_ORG_ID}
+
+  # ============================================================
+  # DEPLOY VERCEL (Frontend)
+  # ============================================================
+  deploy-frontend:
+    name: Deploy Frontend (Vercel)
+    runs-on: ubuntu-latest
+    needs: [test-frontend, docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy Frontend to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID_FRONTEND: ${{ secrets.VERCEL_PROJECT_ID_FRONTEND }}
+        run: |
+          cd frontend
+          vercel deploy --prod --yes --token=${VERCEL_TOKEN} --scope=${VERCEL_ORG_ID}
+
+  # ============================================================
+  # DEPLOY WORKER (Railway/Cloud Run)
+  # ============================================================
+  deploy-worker:
+    name: Deploy Worker (Railway)
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Worker to Railway
+        if: ${{ secrets.RAILWAY_TOKEN != '' }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          npm install -g @railway/cli
+          railway login --token ${RAILWAY_TOKEN}
+          railway up --service vibestream-worker --detach
+
+  # ============================================================
+  # POST-DEPLOY VERIFICATION
+  # ============================================================
+  verify-deployment:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-modal, deploy-frontend, deploy-backend, deploy-worker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install -q requests
+
+      - name: Health check backend (liveness)
+        run: |
+          python -c "
+import requests, os, sys
+url = os.environ.get('BACKEND_URL', 'https://vibestream-backend-api.vercel.app')
+try:
+    r = requests.get(f'{url}/api/v1/health/live/', timeout=10)
+    assert r.status_code == 200, f'Liveness check failed: {r.status_code}'
+    print('Backend liveness check passed')
+except Exception as e:
+    print(f'Liveness check failed: {e}')
+    sys.exit(1)
+"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+
+      - name: Health check backend (readiness)
+        run: |
+          python -c "
+import requests, os, sys
+url = os.environ.get('BACKEND_URL', 'https://vibestream-backend-api.vercel.app')
+try:
+    r = requests.get(f'{url}/api/v1/health/ready/', timeout=15)
+    assert r.status_code == 200, f'Readiness check failed: {r.status_code}'
+    data = r.json()
+    # Check database connectivity
+    assert data.get('database') == 'connected', f'Database not connected: {data.get(\"database\")}'
+    # Check Redis connectivity
+    assert data.get('redis') == 'connected', f'Redis not connected: {data.get(\"redis\")}'
+    # Check Modal inference connectivity
+    assert data.get('inference') == 'connected', f'Inference not connected: {data.get(\"inference\")}'
+    print('Backend readiness check passed')
+except Exception as e:
+    print(f'Readiness check failed: {e}')
+    sys.exit(1)
+"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+
+      - name: Health check frontend
+        run: |
+          python -c "
+import requests, os, sys
+url = os.environ.get('FRONTEND_URL', 'https://vibestream-app.vercel.app')
+try:
+    r = requests.get(url, timeout=10)
+    assert r.status_code == 200, f'Frontend check failed: {r.status_code}'
+    print('Frontend health check passed')
+except Exception as e:
+    print(f'Frontend health check failed: {e}')
+    sys.exit(1)
+"
+        env:
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+
+      - name: Health check Modal inference
+        run: |
+          python -c "
+import requests, os, sys
+url = os.environ.get('MODAL_URL', 'https://your-org--vibestream-inference-inferenceservice-web.modal.run')
+try:
+    r = requests.get(f'{url}/health/live', timeout=15)
+    assert r.status_code == 200, f'Modal liveness check failed: {r.status_code}'
+    r = requests.get(f'{url}/health/ready', timeout=15)
+    assert r.status_code == 200, f'Modal readiness check failed: {r.status_code}'
+    data = r.json()
+    assert data.get('models_loaded') == True, f'Models not loaded: {data.get(\"models_loaded\")}'
+    print('Modal health check passed')
+except Exception as e:
+    print(f'Modal health check failed: {e}')
+    sys.exit(1)
+"
+        env:
+          MODAL_URL: ${{ secrets.MODAL_URL }}
+
+      - name: Health check worker
+        run: |
+          python -c "
+import requests, os, sys
+url = os.environ.get('WORKER_URL', 'https://vibestream-worker.railway.app')
+try:
+    r = requests.get(f'{url}/health/live', timeout=10)
+    assert r.status_code == 200, f'Worker liveness check failed: {r.status_code}'
+    r = requests.get(f'{url}/health/ready', timeout=15)
+    assert r.status_code == 200, f'Worker readiness check failed: {r.status_code}'
+    data = r.json()
+    assert data.get('queue_connected') == True, f'Worker queue not connected: {data.get(\"queue_connected\")}'
+    print('Worker health check passed')
+except Exception as e:
+    print(f'Worker health check failed: {e}')
+    sys.exit(1)
+"
+        env:
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+
+      - name: Smoke test recommendation (authenticated)
+        run: |
+          python -c "
+import requests, os, sys
+url = os.environ.get('BACKEND_URL', 'https://vibestream-backend-api.vercel.app')
+try:
+    # First register/login a test user
+    test_user = 'smoketest_user'
+    test_pass = 'smoketest_pass_123'
+    
+    # Register
+    r = requests.post(f'{url}/api/v1/users/register/', 
+        json={'username': test_user, 'password': test_pass, 'email': 'smoketest@vibestream.app'}, 
+        timeout=15)
+    if r.status_code not in (200, 201):
+        # Try login if already exists
+        r = requests.post(f'{url}/api/v1/users/login/', 
+            json={'username': test_user, 'password': test_pass}, timeout=15)
+    
+    assert r.status_code == 200, f'Login failed: {r.status_code} {r.text}'
+    token = r.json().get('access')
+    assert token, 'No access token returned'
+    
+    # Authenticated recommendation request
+    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    r = requests.post(f'{url}/api/v1/music_recommendation/', 
+        json={'emotion': 'joy', 'history': [], 'genre': 'pop'},
+        headers=headers, timeout=30)
+    
+    assert r.status_code == 200, f'Recommendation failed: {r.status_code} {r.text}'
+    data = r.json()
+    assert 'recommendations' in data and len(data['recommendations']) > 0, 'No recommendations returned'
+    print('Authenticated recommendation smoke test passed')
+except Exception as e:
+    print(f'Authenticated smoke test failed: {e}')
+    sys.exit(1)
+"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+
+      - name: Smoke test GenAI assistant
+        run: |
+          python -c "
+import requests, os, sys
+url = os.environ.get('BACKEND_URL', 'https://vibestream-backend-api.vercel.app')
+try:
+    # Login
+    test_user = 'smoketest_user'
+    test_pass = 'smoketest_pass_123'
+    r = requests.post(f'{url}/api/v1/users/login/', 
+        json={'username': test_user, 'password': test_pass}, timeout=15)
+    assert r.status_code == 200, f'Login failed: {r.status_code} {r.text}'
+    token = r.json().get('access')
+    assert token, 'No access token returned'
+    
+    # GenAI chat request
+    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    r = requests.post(f'{url}/api/v1/genai/chat/', 
+        json={'message': 'Give me something calm for studying'},
+        headers=headers, timeout=30)
+    
+    assert r.status_code == 200, f'GenAI chat failed: {r.status_code} {r.text}'
+    data = r.json()
+    assert data.get('success') == True, f'GenAI returned error: {data.get(\"error\")}'
+    assert 'message' in data and len(data['message']) > 0, 'No response message'
+    print('GenAI smoke test passed')
+except Exception as e:
+    print(f'GenAI smoke test failed: {e}')
+    sys.exit(1)
+"
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+
+  # ============================================================
+  # PRODUCTION E2E VERIFICATION (Manual Trigger)
+  # ============================================================
+  production-e2e:
+    name: Production E2E Verification
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install -q requests
+
+      - name: Run Production E2E
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          MODAL_URL: ${{ secrets.MODAL_URL }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+        run: |
+          python -c "
+import requests, os, sys, time
+
+url = os.environ.get('BACKEND_URL')
+if not url:
+    print('BACKEND_URL not set')
+    sys.exit(1)
+
+print(f'Testing against {url}')
+
+# 1. Register user
+test_user = f'e2e_test_{int(time.time())}'
+test_pass = 'e2e_test_pass_123'
+test_email = f'{test_user}@vibestream.app'
+
+print('1. Registering user...')
+r = requests.post(f'{url}/api/v1/users/register/', 
+    json={'username': test_user, 'password': test_pass, 'email': f'{test_user}@vibestream.app'}, 
+    timeout=15)
+assert r.status_code in (200, 201), f'Register failed: {r.status_code} {r.text}'
+
+# 2. Login
+print('2. Logging in...')
+r = requests.post(f'{url}/api/v1/users/login/', 
+    json={'username': test_user, 'password': test_pass}, timeout=15)
+assert r.status_code == 200, f'Login failed: {r.status_code} {r.text}'
+token = r.json().get('access')
+assert token, 'No access token'
+headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+# 3. Get recommendations
+print('3. Getting recommendations...')
+r = requests.post(f'{url}/api/v1/music_recommendation/', 
+    json={'emotion': 'joy', 'history': [], 'genre': 'pop'},
+    headers=headers, timeout=30)
+assert r.status_code == 200, f'Recommendation failed: {r.status_code} {r.text}'
+recs = r.json().get('recommendations', [])
+assert len(recs) > 0, 'No recommendations returned'
+track_id = recs[0].get('external_url', '').split('/')[-1] or recs[0].get('name')
+emotion = r.json().get('emotion')
+print(f'   Got {len(recs)} recommendations, first track: {track_id}, emotion: {emotion}')
+
+# 4. Submit feedback (like)
+print('4. Submitting feedback (like)...')
+r = requests.post(f'{url}/api/v1/feedback/', 
+    json={'kind': 'track', 'track_id': track_id, 'signal': 'like', 'context_emotion': emotion},
+    headers=headers, timeout=15)
+assert r.status_code in (200, 202), f'Feedback failed: {r.status_code} {r.text}'
+event_id = r.json().get('event_id')
+print(f'   Feedback accepted, event_id: {event_id}')
+
+# 5. Wait for worker processing
+print('5. Waiting for worker to process event...')
+time.sleep(5)
+
+# 6. Request recommendations again (should be personalized)
+print('6. Requesting recommendations again (checking personalization)...')
+r = requests.post(f'{url}/api/v1/music_recommendation/', 
+    json={'emotion': 'joy', 'history': [], 'genre': 'pop'},
+    headers=headers, timeout=30)
+assert r.status_code == 200, f'Second recommendation failed: {r.status_code} {r.text}'
+recs2 = r.json().get('recommendations', [])
+print(f'   Got {len(recs2)} recommendations after feedback')
+
+# 7. GenAI assistant
+print('7. Testing GenAI assistant...')
+r = requests.post(f'{url}/api/v1/genai/chat/', 
+    json={'message': 'Give me something calm for studying'},
+    headers=headers, timeout=30)
+assert r.status_code == 200, f'GenAI chat failed: {r.status_code} {r.text}'
+data = r.json()
+assert data.get('success') == True, f'GenAI error: {data.get(\"error\")}'
+assert 'message' in data and len(data['message']) > 0
+print(f'   GenAI response received')
+
+# 8. Get profile
+print('8. Getting user profile...')
+r = requests.get(f'{url}/api/v1/users/user/profile/', headers=headers, timeout=15)
+assert r.status_code == 200, f'Profile failed: {r.status_code} {r.text}'
+print('   Profile retrieved')
+
+print('\\n=== ALL E2E STEPS PASSED ===')
+"

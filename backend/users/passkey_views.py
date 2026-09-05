@@ -23,7 +23,7 @@ two calls by an opaque ``flowId``.
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from django.conf import settings
 from drf_yasg import openapi
@@ -100,7 +100,7 @@ def _store_challenge(challenge: bytes, purpose: str, user_id: str | None) -> str
     """
     try:
         WebAuthnChallenge.objects(
-            purpose=purpose, expires_at__lt=datetime.utcnow()
+            purpose=purpose, expires_at__lt=datetime.now(timezone.utc)
         ).delete()
     except Exception:  # noqa: BLE001 -- cleanup is best-effort, never fatal
         logger.debug("Expired-challenge sweep failed", exc_info=True)
@@ -109,7 +109,7 @@ def _store_challenge(challenge: bytes, purpose: str, user_id: str | None) -> str
         challenge=bytes_to_base64url(challenge),
         purpose=purpose,
         user_id=user_id,
-        expires_at=datetime.utcnow() + _challenge_ttl(),
+        expires_at=datetime.now(timezone.utc) + _challenge_ttl(),
     ).save()
     return str(doc.id)
 
@@ -472,7 +472,7 @@ def passkey_login_complete(request):
                         status=status.HTTP_401_UNAUTHORIZED)
 
     stored.sign_count = verification.new_sign_count
-    stored.last_used_at = datetime.utcnow()
+    stored.last_used_at = datetime.now(timezone.utc)
     stored.backed_up = bool(verification.credential_backed_up)
     if verification.credential_device_type is not None:
         stored.device_type = str(

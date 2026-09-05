@@ -33,7 +33,7 @@ exports[`HomePage snapshot matches the rendered markup once the profile loads 1`
           <p
             class="MuiTypography-root MuiTypography-body1 css-k2ul5p-MuiTypography-root"
           >
-            How are you feeling
+            How are you feeling 
             <span
               class="MuiBox-root css-1hth1dv"
             >

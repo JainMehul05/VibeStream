@@ -51,6 +51,14 @@ def _normalise_endpoint(request) -> str:
     return request.path or "/"
 
 
+def _get_user_id(request) -> str | None:
+    """Extract user_id from request if authenticated."""
+    user = getattr(request, "user", None)
+    if user and getattr(user, "is_authenticated", False):
+        return getattr(user, "username", None)
+    return None
+
+
 class MetricsMiddleware:
     """Old-style Django middleware: __init__(get_response), __call__(request)."""
 
@@ -73,15 +81,19 @@ class MetricsMiddleware:
             status = int(getattr(response, "status_code", 500))
             endpoint = _normalise_endpoint(request)
             method = request.method or "GET"
+            request_id = getattr(request, "request_id", None)
+            user_id = _get_user_id(request)
 
             recorder_module.get_recorder().record(
                 endpoint=endpoint, method=method,
                 status=status, latency_ms=latency_ms,
+                request_id=request_id, user_id=user_id,
             )
             store_module.insert_event(
                 endpoint=endpoint, method=method,
                 status=status, latency_ms=latency_ms,
                 container_id=recorder_module.get_recorder().container_id,
+                request_id=request_id, user_id=user_id,
             )
         except Exception:  # noqa: BLE001
             # Metrics must never break the request.

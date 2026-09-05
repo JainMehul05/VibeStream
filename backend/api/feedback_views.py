@@ -1,26 +1,20 @@
 """``POST /api/feedback/`` -- unified user-feedback endpoint.
 
-Two surfaces share one URL because the auth, throttling, and persistence
-paths are identical and the discriminator (``kind``) is one byte. Keeping
-them separate would mean duplicating the validator + the swagger schema
-for no gain.
+Phase 3: Async event-driven feedback processing.
+- Validates request and creates event
+- Enqueues event for background worker processing
+- Returns 202 Accepted immediately
+- Worker processes: calibration, bandit, preferences, cache invalidation
 
-Phase 1 behaviour (this commit):
-* Accept and persist both kinds to Mongo time-series collections.
-* For ``kind=mood``, also bump the user's per-user calibration counter
-  on ``UserProfile.mood_calibration`` (the L1 layer from the plan).
-  Inference itself does NOT yet consult that map -- that wire-up lands
-  in Phase 3 alongside the dominant-correction threshold.
-* For ``kind=track``, just persist. The bandit posterior (Phase 4)
-  reads the event log to seed itself, so we capture from day one.
-
-Nothing user-visible changes until Phase 2 lights up the widgets.
+Idempotency supported via Idempotency-Key header.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
+from django.conf import settings
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
@@ -31,7 +25,14 @@ from rest_framework.response import Response
 from backend.api_docs import RESP_401, Tags, _obj, error_response, ok_message
 
 from . import bandit, feedback_store, track_features
+from . import preference_profile
 from .models import UserProfile
+from .events import (
+    EventType,
+    create_feedback_track_event,
+    create_feedback_mood_event,
+    enqueue_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,10 +98,8 @@ _TRACK_FEEDBACK_BODY = _obj(
             type=openapi.TYPE_OBJECT, nullable=True,
             description=(
                 "Optional full track dict (same shape the recommender "
-                "returns). When supplied, the bandit posterior is "
-                "updated for the signed-in user; when omitted, only "
-                "the event log is written and the posterior is left "
-                "untouched."
+                "returns). When supplied, the bandit posterior and "
+                "preferences are updated for the signed-in user."
             ),
         ),
     },
@@ -199,86 +198,9 @@ def _validate_track(payload: dict) -> tuple[dict | None, str | None]:
     }, None
 
 
-# ---------------------------------------------------------------------------
-# Calibration map update (Surface 1, L1)
-# ---------------------------------------------------------------------------
-def _bump_calibration(username: str, predicted: str, actual: str) -> None:
-    """Increment ``mood_calibration[predicted][actual]`` on the profile.
-
-    Never raises -- a failure here must not poison the persisted event.
-    """
-    if predicted == actual:
-        # No correction signal -- user just confirmed. Still worth
-        # persisting in the event log (handled by the caller), but not
-        # worth muddying the calibration map with self-mappings.
-        return
-    try:
-        profile = UserProfile.objects(username=username).first()
-        if profile is None:
-            return
-        calibration = dict(profile.mood_calibration or {})
-        bucket = dict(calibration.get(predicted, {}) or {})
-        bucket[actual] = int(bucket.get(actual, 0)) + 1
-        calibration[predicted] = bucket
-        profile.mood_calibration = calibration
-        profile.save()
-    except Exception:  # noqa: BLE001
-        logger.warning(
-            "mood calibration bump failed for user=%s (silently skipping)",
-            username,
-        )
-
-
-def _featurize(track: dict | None, context_emotion: str | None):
-    """Feature vector for a track, or None if missing/unfeaturizable."""
-    if track is None:
-        return None
-    try:
-        return track_features.featurize(track, context_emotion=context_emotion)
-    except Exception:  # noqa: BLE001
-        logger.warning("feature extraction failed -- skipping bandit op")
-        return None
-
-
-def _apply_posterior(username: str, features, signal: str) -> None:
-    """Add ``signal``'s contribution (``features``) to the user's posterior."""
-    if not features:
-        return
-    try:
-        profile = UserProfile.objects(username=username).first()
-        if profile is None:
-            return
-        profile.taste_profile = bandit.update_posterior(
-            profile.taste_profile or {}, features, signal
-        )
-        profile.save()
-    except Exception:  # noqa: BLE001
-        logger.warning(
-            "taste_profile update failed for user=%s (silently skipping)", username
-        )
-
-
-def _revert_posterior(username: str, features, signal: str) -> None:
-    """Subtract a previously-applied vote (``features``/``signal``).
-
-    ``features`` is the EXACT vector stored when the vote was cast, so the
-    reversal cancels it precisely regardless of how the track or the context
-    emotion look at revert time.
-    """
-    if not features:
-        return
-    try:
-        profile = UserProfile.objects(username=username).first()
-        if profile is None:
-            return
-        profile.taste_profile = bandit.revert_posterior(
-            profile.taste_profile or {}, features, signal
-        )
-        profile.save()
-    except Exception:  # noqa: BLE001
-        logger.warning(
-            "taste_profile revert failed for user=%s (silently skipping)", username
-        )
+def _extract_idempotency_key(request) -> str | None:
+    """Extract Idempotency-Key from request headers."""
+    return request.META.get("HTTP_IDEMPOTENCY_KEY")
 
 
 # ---------------------------------------------------------------------------
@@ -287,23 +209,32 @@ def _revert_posterior(username: str, features, signal: str) -> None:
 @swagger_auto_schema(
     method="post",
     tags=[Tags.INFERENCE],
-    operation_summary="Submit mood / track feedback",
+    operation_summary="Submit mood / track feedback (async)",
     operation_description=(
         "Single endpoint for both RL surfaces.\n\n"
         "**Mood correction (`kind=\"mood\"`)** -- record that the user "
         "disagreed (or agreed) with a detected emotion. Per-user calibration "
-        "is updated immediately; the global classifier is fine-tuned offline "
-        "from the accumulated log.\n\n"
+        "is updated asynchronously by the background worker.\n\n"
         "**Track signal (`kind=\"track\"`)** -- record a 👍 / 👎 / Open-in-"
-        "Deezer event for a track. Feeds the Thompson Sampling bandit re-ranker.\n\n"
-        "Requires a user JWT (`Authorization: Bearer <access>`). The endpoint "
-        "is intentionally idempotent at the persistence layer -- repeat calls "
-        "accumulate, they don't fail. Returns **202** on success because "
-        "downstream effects (calibration map, bandit posterior) settle out-of-band."
+        "Deezer event for a track. Feeds the Thompson Sampling bandit re-ranker "
+        "and updates explicit preferences asynchronously.\n\n"
+        "Requires a user JWT (`Authorization: Bearer <access>`).\n\n"
+        "Returns **202 Accepted** immediately. The feedback is queued for "
+        "asynchronous processing. Idempotency supported via "
+        "`Idempotency-Key` header (recommended for track signals)."
     ),
     request_body=_FEEDBACK_BODY,
+    manual_parameters=[
+        openapi.Parameter(
+            name="Idempotency-Key",
+            in_=openapi.IN_HEADER,
+            type=openapi.TYPE_STRING,
+            required=False,
+            description="Optional idempotency key for safe retries. Same key returns cached response.",
+        ),
+    ],
     responses={
-        202: ok_message("Feedback accepted.", "Feedback recorded."),
+        202: ok_message("Feedback accepted for processing.", "Feedback queued."),
         400: error_response("Schema validation failed.",
                             "Field 'kind' must be either 'mood' or 'track'."),
         401: RESP_401,
@@ -312,7 +243,7 @@ def _revert_posterior(username: str, features, signal: str) -> None:
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def feedback(request):
-    """Persist a mood correction or a track signal for the signed-in user."""
+    """Accept feedback and queue for async processing."""
     cleaned, error = _validate(request.data or {})
     if error is not None:
         return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
@@ -320,63 +251,49 @@ def feedback(request):
     username = request.user.username
     assert cleaned is not None  # narrowing for type-checkers
 
+    # Extract idempotency key from header
+    idem_key = _extract_idempotency_key(request)
+
     if cleaned["kind"] == _KIND_MOOD:
-        feedback_store.insert_mood_feedback(
-            username=username,
+        event = create_feedback_mood_event(
+            user_id=username,
             predicted=cleaned["predicted"],
             actual=cleaned["actual"],
             input_type=cleaned["input_type"],
             confidence=cleaned["confidence"],
             session_id=cleaned["session_id"],
+            idempotency_key=idem_key,
         )
-        _bump_calibration(username, cleaned["predicted"], cleaned["actual"])
-    elif cleaned["signal"] == "open_deezer":
-        # Implicit, purely additive positive signal -- never a vote, so no
-        # reconciliation: every open is its own soft-positive event.
-        feedback_store.insert_track_feedback(
-            username=username,
+    else:  # track feedback
+        event = create_feedback_track_event(
+            user_id=username,
             track_id=cleaned["track_id"],
-            signal="open_deezer",
+            signal=cleaned["signal"],
             context_emotion=cleaned["context_emotion"],
+            track=cleaned["track"],
+            idempotency_key=idem_key,
         )
-        _apply_posterior(
-            username,
-            _featurize(cleaned["track"], cleaned["context_emotion"]),
-            "open_deezer",
-        )
+
+    # Enqueue event for asynchronous processing by background worker
+    # Synchronous mode for testing (controlled by FEEDBACK_SYNC_MODE setting)
+    from django.conf import settings
+    if getattr(settings, "FEEDBACK_SYNC_MODE", False):
+        from .events import process_feedback_track, process_feedback_mood
+        from django.core.cache import cache
+        redis_client = cache._cache.get_client(write=True)
+        if event.type == EventType.FEEDBACK_MOOD:
+            process_feedback_mood(event, redis_client)
+        else:
+            process_feedback_track(event, redis_client)
+        logger.info("feedback_processed_sync username=%s event_id=%s type=%s", username, event.event_id, event.type.value)
     else:
-        # "Set vote" semantics for like / unlike / clear: a track's CURRENT
-        # vote is the only thing that contributes to the posterior. Look up
-        # the prior vote (and the exact feature vector it was applied with)
-        # BEFORE recording this event, then reconcile: revert the prior
-        # contribution against its stored vector and apply the new one. This
-        # keeps the posterior correct across a like<->unlike switch (no
-        # double-count), a clear (net zero), a cross-mood re-vote (the
-        # original emotion axis is reverted, not the current one), and stays
-        # idempotent if the same vote is re-sent.
-        signal = cleaned["signal"]
-        prior = feedback_store.get_active_vote(username, cleaned["track_id"])
-        prior_signal = prior["signal"] if prior else None
-
-        new_features = (
-            _featurize(cleaned["track"], cleaned["context_emotion"])
-            if signal in ("like", "unlike")
-            else None
-        )
-        feedback_store.insert_track_feedback(
-            username=username,
-            track_id=cleaned["track_id"],
-            signal=signal,
-            context_emotion=cleaned["context_emotion"],
-            features=new_features,
-        )
-        if prior_signal in ("like", "unlike") and prior_signal != signal:
-            _revert_posterior(username, prior.get("features"), prior_signal)
-        if signal in ("like", "unlike") and signal != prior_signal:
-            _apply_posterior(username, new_features, signal)
-
+        from .events import enqueue_event
+        from django.core.cache import cache
+        redis_client = cache._cache.get_client(write=True)
+        enqueue_event(redis_client, event)
+        logger.info("feedback_enqueued username=%s event_id=%s type=%s", username, event.event_id, event.type.value)
     return Response(
-        {"message": "Feedback recorded."},
+        {"message": "Feedback accepted for processing.", "event_id": event.event_id},
         status=status.HTTP_202_ACCEPTED,
     )
 
