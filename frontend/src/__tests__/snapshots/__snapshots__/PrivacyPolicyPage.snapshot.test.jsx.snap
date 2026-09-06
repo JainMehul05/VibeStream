@@ -387,9 +387,9 @@ exports[`PrivacyPolicyPage snapshot matches the rendered markup 1`] = `
             <p>
               Questions, concerns, or data-removal requests: 
               <a
-                href="mailto:hoangson091104@gmail.com"
+                href="mailto:mjain3_be24@thapar.edu"
               >
-                hoangson091104@gmail.com
+                mjain3_be24@thapar.edu
               </a>
               .
             </p>
@@ -406,9 +406,9 @@ exports[`PrivacyPolicyPage snapshot matches the rendered markup 1`] = `
           Questions about this policy? Reach out at 
           <a
             class="MuiBox-root css-1feb05w"
-            href="mailto:hoangson091104@gmail.com"
+            href="mailto:mjain3_be24@thapar.edu"
           >
-            hoangson091104@gmail.com
+            mjain3_be24@thapar.edu
           </a>
           .
         </p>

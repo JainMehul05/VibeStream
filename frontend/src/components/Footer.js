@@ -5,7 +5,6 @@ import {
   GitHub,
   LinkedIn,
   Mail,
-  Language,
   MusicNote,
   Favorite,
   KeyboardArrowUp,
@@ -40,23 +39,18 @@ const NAV_GROUPS = [
 const SOCIAL_LINKS = [
   {
     label: "GitHub",
-    href: "https://github.com/JainMehul05/VibeStream",
+    href: "https://github.com/JainMehul05",
     Icon: GitHub,
   },
   {
     label: "LinkedIn",
-    href: "https://www.linkedin.com/in/hoangsonw",
+    href: "https://www.linkedin.com/in/jainmehul05/",
     Icon: LinkedIn,
   },
   {
     label: "Email",
-    href: "mailto:hoangson091104@gmail.com",
+    href: "mailto:mjain3_be24@thapar.edu",
     Icon: Mail,
-  },
-  {
-    label: "Website",
-    href: "https://sonnguyenhoang.com",
-    Icon: Language,
   },
 ];
 

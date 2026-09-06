@@ -423,9 +423,9 @@ exports[`TermsOfServicePage snapshot matches the rendered markup 1`] = `
             <p>
               Questions about these terms? 
               <a
-                href="mailto:hoangson091104@gmail.com"
+                href="mailto:mjain3_be24@thapar.edu"
               >
-                hoangson091104@gmail.com
+                mjain3_be24@thapar.edu
               </a>
               .
             </p>
@@ -442,9 +442,9 @@ exports[`TermsOfServicePage snapshot matches the rendered markup 1`] = `
           Questions about this agreement? Reach out at 
           <a
             class="MuiBox-root css-1feb05w"
-            href="mailto:hoangson091104@gmail.com"
+            href="mailto:mjain3_be24@thapar.edu"
           >
-            hoangson091104@gmail.com
+            mjain3_be24@thapar.edu
           </a>
           .
         </p>

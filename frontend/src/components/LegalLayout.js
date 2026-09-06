@@ -103,10 +103,10 @@ export default function LegalLayout({ kind, title, intro, sections }) {
             Reach out at{" "}
             <Box
               component="a"
-              href="mailto:hoangson091104@gmail.com"
+              href="mailto:mjain3_be24@thapar.edu"
               sx={styles.footerLink}
             >
-              hoangson091104@gmail.com
+              mjain3_be24@thapar.edu
             </Box>
             .
           </Typography>

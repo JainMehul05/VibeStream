@@ -141,8 +141,8 @@ const PrivacyPolicyPage = () => (
         body: (
           <p>
             Questions, concerns, or data-removal requests:{" "}
-            <a href="mailto:hoangson091104@gmail.com">
-              hoangson091104@gmail.com
+            <a href="mailto:mjain3_be24@thapar.edu">
+              mjain3_be24@thapar.edu
             </a>
             .
           </p>

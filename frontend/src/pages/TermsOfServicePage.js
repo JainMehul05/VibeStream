@@ -158,8 +158,8 @@ const TermsOfServicePage = () => (
         body: (
           <p>
             Questions about these terms?{" "}
-            <a href="mailto:hoangson091104@gmail.com">
-              hoangson091104@gmail.com
+            <a href="mailto:mjain3_be24@thapar.edu">
+              mjain3_be24@thapar.edu
             </a>
             .
           </p>
