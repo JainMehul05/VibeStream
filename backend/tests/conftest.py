@@ -13,7 +13,6 @@ import sys
 os.environ.setdefault("FEEDBACK_SYNC_MODE", "true")
 os.environ.setdefault("FEEDBACK_ENABLED", "false")
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
-
 import django
 django.setup()
 
