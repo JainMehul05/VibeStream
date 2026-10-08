@@ -6,41 +6,22 @@ with fakeredis.
 """
 
 import os
-import threading
-from datetime import datetime, timezone
-from typing import Optional
+import sys
 
-import django
-import fakeredis
-import pytest
-
-# Set test environment variables BEFORE Django settings are loaded
-# This must happen in pytest_configure which runs before Django initialization
-def pytest_configure(config):
-    """Set test environment variables before Django settings are loaded."""
-    os.environ.setdefault("FEEDBACK_SYNC_MODE", "true")
-    os.environ.setdefault("FEEDBACK_ENABLED", "false")
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
-
-
-# Enable synchronous feedback processing for all tests
-# These will be set again after django.setup() for safety
+# Set test environment variables BEFORE any Django imports
+# This must happen at module load time, before pytest-django initializes
 os.environ.setdefault("FEEDBACK_SYNC_MODE", "true")
-os.environ.setdefault("FEEDBACK_ENABLED", "false")  # Disable feedback store persistence in tests
-
+os.environ.setdefault("FEEDBACK_ENABLED", "false")
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
 
 import django
 django.setup()
 
-import backend.settings as settings_module
-settings_module.FEEDBACK_SYNC_MODE = True
-settings_module.FEEDBACK_ENABLED = False
-
-# Debug: verify settings are loaded correctly
-from django.conf import settings
-print(f"CONFTEST: FEEDBACK_SYNC_MODE = {getattr(settings, 'FEEDBACK_SYNC_MODE', 'NOT SET')}")
-print(f"CONFTEST: FEEDBACK_ENABLED = {getattr(settings, 'FEEDBACK_ENABLED', 'NOT SET')}")
+import fakeredis
+import pytest
+import threading
+from datetime import datetime, timezone
+from typing import Optional
 
 import mongomock  # noqa: E402
 import mongoengine  # noqa: E402
